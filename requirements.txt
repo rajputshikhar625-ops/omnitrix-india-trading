@@ -3,6 +3,5 @@ yfinance
 gnews
 crewai
 pydantic>=2.0.0
-huggingface_hub
-litellm
 groq
+litellm
