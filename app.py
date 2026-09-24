@@ -38,6 +38,18 @@ groq_api_key = st.sidebar.text_input(
     help="Get a free key instantly at https://console.groq.com/keys"
 )
 
+# Groq Model Selection Dropdown
+selected_model = st.sidebar.selectbox(
+    "Select Active Groq Model:",
+    [
+        "groq/llama-3.1-8b-instant",
+        "groq/llama-3.3-70b-versatile",
+        "groq/mixtral-8x7b-32768"
+    ],
+    index=0,
+    help="If one model is undergoing maintenance or deprecated, switch to another option."
+)
+
 symbol = st.sidebar.text_input(
     "Enter Indian Ticker (.NS for NSE):", 
     value="RELIANCE.NS",
@@ -105,9 +117,9 @@ if st.button("🟢 INITIALIZE OMNITRIX AGENT SELF-RESEARCH"):
         st.error("Please enter your free Groq API Key in the left sidebar (get one at console.groq.com/keys).")
     else:
         try:
-            # Fully supported Groq Model ID
+            # Initialize chosen Groq Model
             groq_llm = LLM(
-                model="groq/llama3-70b-8192",
+                model=selected_model,
                 api_key=groq_api_key
             )
 
@@ -166,7 +178,7 @@ Provide output in 3 clean sections:
                 agent=filter_agent
             )
 
-            with st.spinner("⚡ Omnitrix Multi-Agent Crew running at ultra-speed via Groq Llama 3..."):
+            with st.spinner(f"⚡ Omnitrix Crew running via {selected_model}..."):
                 crew = Crew(
                     agents=[tech_agent, news_agent, filter_agent],
                     tasks=[task1, task2, task3],
