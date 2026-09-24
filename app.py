@@ -1,4 +1,3 @@
-
 import os
 import streamlit as st
 import yfinance as yf
@@ -16,19 +15,19 @@ ben10_css = """
 st.markdown(ben10_css, unsafe_allow_html=True)
 
 # ==========================================
-# 2. UI HEADER & TICKER SELECTOR (NSE/BSE)
+# 2. UI HEADER & CONTROL PANEL
 # ==========================================
-st.title("👽 OMNITRIX AI: HUGGING FACE TRADING TERMINAL")
-st.caption("⚡ Powered by Hugging Face Inference API | Indian Markets (NSE/BSE) | Multi-Agent Self-Research")
+st.title("👽 OMNITRIX AI: GROQ LLAMA TRADING TERMINAL")
+st.caption("⚡ Powered by Groq Cloud Llama 3.3 | Indian Markets (NSE/BSE) | Multi-Agent Self-Research")
 
 st.sidebar.header("⚙️ OMNITRIX CONTROL PANEL")
 
-# Hugging Face Free API Token Input
-hf_token = st.sidebar.text_input(
-    "Hugging Face Free Access Token:",
-    value=os.getenv("HF_TOKEN", ""),
+# Free Groq API Key Input
+groq_api_key = st.sidebar.text_input(
+    "Enter Free Groq API Key:",
+    value=os.getenv("GROQ_API_KEY", ""),
     type="password",
-    help="Get a free token at https://huggingface.co/settings/tokens"
+    help="Get a free key instantly at https://console.groq.com/keys"
 )
 
 symbol = st.sidebar.text_input(
@@ -91,59 +90,60 @@ except Exception as err:
     st.warning(f"Google News fetch error: {err}")
 
 # ==========================================
-# 5. MULTI-AGENT RESEARCH PIPELINE (HUGGING FACE)
+# 5. GROQ LLAMA MULTI-AGENT ENGINE
 # ==========================================
 if st.button("🟢 INITIALIZE OMNITRIX AGENT SELF-RESEARCH"):
-    if not hf_token:
-        st.error("Please enter your free Hugging Face Access Token in the sidebar.")
+    if not groq_api_key:
+        st.error("Please enter your free Groq API Key in the left sidebar (get one at console.groq.com/keys).")
     else:
-        # Configure Hugging Face Model
-        hf_llm = LLM(
-            model="huggingface/meta-llama/Llama-3.2-3B-Instruct",
-            api_key=hf_token
-        )
+        try:
+            # Initialize Groq Llama 3.3 Engine
+            groq_llm = LLM(
+                model="groq/llama-3.3-70b-versatile",
+                api_key=groq_api_key
+            )
 
-        tech_agent = Agent(
-            role="NSE/BSE Technical Pattern Specialist",
-            goal="Analyze price structures, volatility, support/resistance levels, and short-term trends.",
-            backstory="You are a senior technical analyst on Dalal Street specializing in price action and volume trends.",
-            llm=hf_llm,
-            verbose=True
-        )
+            tech_agent = Agent(
+                role="NSE/BSE Technical Pattern Specialist",
+                goal="Analyze price structures, volatility, support/resistance levels, and short-term trends.",
+                backstory="You are a senior technical analyst on Dalal Street specializing in price action and volume trends.",
+                llm=groq_llm,
+                verbose=True
+            )
 
-        news_agent = Agent(
-            role="Indian Market & News Analyst",
-            goal="Extract key market drivers, earnings impacts, and sentiment from Indian media snippets.",
-            backstory="You analyze Indian market sentiment from Moneycontrol, Economic Times, and Mint.",
-            llm=hf_llm,
-            verbose=True
-        )
+            news_agent = Agent(
+                role="Indian Market & News Analyst",
+                goal="Extract key market drivers, earnings impacts, and sentiment from Indian media snippets.",
+                backstory="You analyze Indian market sentiment from Moneycontrol, Economic Times, and Mint.",
+                llm=groq_llm,
+                verbose=True
+            )
 
-        filter_agent = Agent(
-            role="Head Risk Manager & Trade Filter",
-            goal="Apply strict risk filters to decide whether a trade SHOULD BE TAKEN or REJECTED/PASSED.",
-            backstory="You are a conservative risk officer who rejects low-probability setups or bad risk-reward trades.",
-            llm=hf_llm,
-            verbose=True
-        )
+            filter_agent = Agent(
+                role="Head Risk Manager & Trade Filter",
+                goal="Apply strict risk filters to decide whether a trade SHOULD BE TAKEN or REJECTED/PASSED.",
+                backstory="You are a conservative risk officer who rejects low-probability setups or bad risk-reward trades.",
+                llm=groq_llm,
+                verbose=True
+            )
 
-        if not news_summary:
-            news_summary = "No live news available. Base analysis purely on price trends."
+            if not news_summary:
+                news_summary = "No live news available. Base analysis purely on price trends."
 
-        task1 = Task(
-            description=f"Analyze price history for {symbol} (Price: ₹{latest_price:,.2f}). Identify trend direction, support, and resistance.",
-            expected_output="Technical trend analysis with support/resistance levels.",
-            agent=tech_agent
-        )
+            task1 = Task(
+                description=f"Analyze price history for {symbol} (Price: ₹{latest_price:,.2f}). Identify trend direction, support, and resistance.",
+                expected_output="Technical trend analysis with support/resistance levels.",
+                agent=tech_agent
+            )
 
-        task2 = Task(
-            description=f"Analyze these Indian market news snippets for {symbol}:\n{news_summary}\nAssign a sentiment score (-10 to +10) and key drivers.",
-            expected_output="News sentiment score and key market catalysts.",
-            agent=news_agent
-        )
+            task2 = Task(
+                description=f"Analyze these Indian market news snippets for {symbol}:\n{news_summary}\nAssign a sentiment score (-10 to +10) and key drivers.",
+                expected_output="News sentiment score and key market catalysts.",
+                agent=news_agent
+            )
 
-        task3 = Task(
-            description=f"""
+            task3 = Task(
+                description=f"""
 Review technical and news research for {symbol}. Apply these strict rules:
 1. Required Risk-to-Reward Ratio: At least 1:{min_rr_ratio}
 2. Max Loss Rule: Stop trading if streak reached {max_loss_limit} loss. Target wins: {win_target_limit}.
@@ -152,19 +152,22 @@ Review technical and news research for {symbol}. Apply these strict rules:
 Provide output in 3 clean sections:
 - **RESEARCH SUMMARY**: Key findings.
 - **TRADE VERDICT**: [EXECUTE TRADE] or [DO NOT TRADE / STAND ASIDE].
-- **REASONING & RISK PLAN**: Explanation for decision.
+- **REASONING & RISK PLAN**: Detailed explanation for decision.
 """,
-            expected_output="Final Trade Verdict ([EXECUTE TRADE] or [DO NOT TRADE / STAND ASIDE]) with reasoning.",
-            agent=filter_agent
-        )
-
-        with st.spinner("🤖 Omnitrix Multi-Agent Crew running via Hugging Face Cloud AI..."):
-            crew = Crew(
-                agents=[tech_agent, news_agent, filter_agent],
-                tasks=[task1, task2, task3],
-                verbose=True
+                expected_output="Final Trade Verdict ([EXECUTE TRADE] or [DO NOT TRADE / STAND ASIDE]) with reasoning.",
+                agent=filter_agent
             )
-            result = crew.kickoff()
-            
-            st.subheader("🛸 OMNITRIX AUTONOMOUS RESEARCH REPORT")
-            st.markdown(result.raw)
+
+            with st.spinner("⚡ Omnitrix Multi-Agent Crew running at ultra-speed via Groq Llama 3.3..."):
+                crew = Crew(
+                    agents=[tech_agent, news_agent, filter_agent],
+                    tasks=[task1, task2, task3],
+                    verbose=True
+                )
+                result = crew.kickoff()
+                
+                st.subheader("🛸 OMNITRIX AUTONOMOUS RESEARCH REPORT")
+                st.markdown(result.raw)
+
+        except Exception as e:
+            st.error(f"Execution Error: {str(e)}")
