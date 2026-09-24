@@ -7,7 +7,7 @@ from crewai import Agent, Task, Crew, LLM
 import crewai.llms.cache as _crewai_cache
 
 # ==========================================
-# FIX GROQ & CREWAI CACHE BREAKPOINT ISSUE
+# FIX GROQ & CREWAI COMPATIBILITY
 # ==========================================
 litellm.drop_params = True
 _crewai_cache.mark_cache_breakpoint = lambda msg: msg
@@ -26,7 +26,7 @@ st.markdown(ben10_css, unsafe_allow_html=True)
 # 2. UI HEADER & CONTROL PANEL
 # ==========================================
 st.title("👽 OMNITRIX AI: GROQ LLAMA TRADING TERMINAL")
-st.caption("⚡ Powered by Groq Cloud Llama 3.3 | Indian Markets (NSE/BSE) | Multi-Agent Self-Research")
+st.caption("⚡ Powered by Groq Cloud Llama 3 | Indian Markets (NSE/BSE) | Multi-Agent Self-Research")
 
 st.sidebar.header("⚙️ OMNITRIX CONTROL PANEL")
 
@@ -105,9 +105,9 @@ if st.button("🟢 INITIALIZE OMNITRIX AGENT SELF-RESEARCH"):
         st.error("Please enter your free Groq API Key in the left sidebar (get one at console.groq.com/keys).")
     else:
         try:
-            # Initialize Groq Llama 3.3 Engine
+            # Fully supported Groq Model ID
             groq_llm = LLM(
-                model="groq/llama-3.3-70b-versatile",
+                model="groq/llama3-70b-8192",
                 api_key=groq_api_key
             )
 
@@ -166,7 +166,7 @@ Provide output in 3 clean sections:
                 agent=filter_agent
             )
 
-            with st.spinner("⚡ Omnitrix Multi-Agent Crew running at ultra-speed via Groq Llama 3.3..."):
+            with st.spinner("⚡ Omnitrix Multi-Agent Crew running at ultra-speed via Groq Llama 3..."):
                 crew = Crew(
                     agents=[tech_agent, news_agent, filter_agent],
                     tasks=[task1, task2, task3],
