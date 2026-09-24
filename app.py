@@ -2,7 +2,15 @@ import os
 import streamlit as st
 import yfinance as yf
 from gnews import GNews
+import litellm
 from crewai import Agent, Task, Crew, LLM
+import crewai.llms.cache as _crewai_cache
+
+# ==========================================
+# FIX GROQ & CREWAI CACHE BREAKPOINT ISSUE
+# ==========================================
+litellm.drop_params = True
+_crewai_cache.mark_cache_breakpoint = lambda msg: msg
 
 # ==========================================
 # 1. BEN 10 OMNITRIX SCI-FI STYLING (CSS)
