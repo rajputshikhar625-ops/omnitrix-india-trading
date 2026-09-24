@@ -2,3 +2,4 @@ streamlit
 yfinance
 gnews
 crewai
+pydantic>=2.0.0
