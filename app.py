@@ -2,13 +2,14 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from config import APP_VERSION, LOCAL_LLM_MODEL
-from market_data import market_snapshot, get_nifty_price
+from market_data import market_snapshot, get_nifty_price, get_price
 from research_engine import research_stock
 from scanner import scan_universe
 from ai_engine import ai_call, autonomous_research, test_ai
 from charts import candlestick_chart, oscillator_chart, volume_chart
-from paper_trading import get_account, monitor_positions
+from paper_trading import buy, check_daily_lock, get_account, monitor_positions, sell
 from learning_engine import learning_report, mistakes_by_reason
+from risk_engine import build_paper_trade_plan
 
 st.set_page_config(page_title="OMNITRIX",page_icon="◈",layout="wide",initial_sidebar_state="collapsed")
 
@@ -151,6 +152,7 @@ elif st.session_state.page=="AI DEPLOYED":
         col.markdown(f'<div class="bento"><div class="label">{l}</div><div class="value">{v}</div><div class="sub">{s}</div></div>',unsafe_allow_html=True)
     selected=st.selectbox("AI focus stock",list(STOCKS),format_func=lambda s:f"{STOCKS[s]} • {s}",key="deploy_stock")
     if st.button("RUN DECISION SIMULATION",use_container_width=True):
+        st.session_state.paper_plan = None
         with st.spinner("Comparing news + current price + chart + historical pattern..."):
             p=research_stock(selected); st.session_state.deploy_pkg=p
             st.session_state.deploy_report=autonomous_research(p)
@@ -160,6 +162,138 @@ elif st.session_state.page=="AI DEPLOYED":
         c=st.columns(3)
         c[0].metric("NEWS",nm.get("bias","NEUTRAL")); c[1].metric("PRICE",f"₹{t.get('close',0):,.2f}"); c[2].metric("PATTERN",p["patterns"][0]["pattern"] if p["patterns"] else "NONE")
         if st.session_state.get("deploy_report"): st.markdown(st.session_state.deploy_report)
+    st.markdown("### Paper execution")
+    st.caption("Entry rules use the deterministic pattern engine. The latest available Yahoo Finance quote is used for sizing. Every order below is simulated locally; no broker order is sent.")
+
+    if p and p.get("symbol") == selected:
+        if st.button("REFRESH QUOTE & BUILD PAPER RISK PLAN", use_container_width=True, key="paper_plan_build"):
+            quote = get_price(selected)
+            account = get_account()
+            position_quotes = {}
+            for symbol in account.get("positions", {}):
+                position_price = get_price(symbol)
+                if position_price is not None:
+                    position_quotes[symbol] = position_price
+            if quote is not None:
+                position_quotes[selected] = quote
+
+            check_daily_lock(position_quotes)
+            account = get_account()
+
+            if quote is None:
+                plan = {
+                    "allowed": False,
+                    "symbol": selected,
+                    "price": None,
+                    "quantity": 0,
+                    "reason": "Yahoo Finance did not return a current quote. No paper order can be planned.",
+                }
+            else:
+                plan = build_paper_trade_plan(p, account, current_price=quote)
+
+            st.session_state.paper_plan = plan
+            st.session_state.paper_plan_time = datetime.now()
+
+        plan = st.session_state.get("paper_plan")
+        if plan and plan.get("symbol") == selected:
+            if not plan.get("allowed"):
+                st.warning(plan.get("reason", "Paper risk checks blocked this plan."))
+            else:
+                c = st.columns(5)
+                c[0].metric("PAPER ENTRY", f"₹{plan['price']:,.2f}")
+                c[1].metric("SHARES", plan["quantity"])
+                c[2].metric("STOP", f"₹{plan['stop_loss']:,.2f}")
+                c[3].metric("TARGET", f"₹{plan['target']:,.2f}")
+                c[4].metric("RISK AT STOP", f"₹{plan['risk_amount']:,.2f}")
+                st.caption(
+                    f"Signal: {', '.join(plan['signal_patterns'])} • "
+                    f"Paper notional ₹{plan['notional']:,.2f} • "
+                    f"Risk budget ₹{plan['risk_budget']:,.2f} • "
+                    f"Plan generated {st.session_state.paper_plan_time:%Y-%m-%d %H:%M:%S}"
+                )
+                plan_age = (datetime.now() - st.session_state.paper_plan_time).total_seconds()
+                if plan_age > 300:
+                    st.warning("This quote is over 5 minutes old. Build a fresh plan before placing the paper order.")
+                elif st.button("CONFIRM PAPER BUY — LOCAL SIMULATION ONLY", use_container_width=True, key="paper_buy_confirm"):
+                    ok, message = buy(
+                        plan["symbol"],
+                        plan["quantity"],
+                        plan["price"],
+                        stop_loss=plan["stop_loss"],
+                        target=plan["target"],
+                    )
+                    if ok:
+                        st.session_state.paper_plan = None
+                        st.success(message)
+                    else:
+                        st.error(message)
+    else:
+        st.info("Run the decision simulation for the selected stock before building a paper order plan.")
+
+    paper_account = get_account()
+    paper_positions = paper_account.get("positions", {})
+    st.markdown("### Open paper positions")
+    if paper_positions:
+        for symbol, position in list(paper_positions.items()):
+            if st.button(f"EXIT {symbol} — PAPER ONLY", key=f"paper_exit_{symbol}"):
+                quote = get_price(symbol)
+                if quote is None:
+                    st.warning(f"No valid Yahoo Finance quote for {symbol}; position remains open.")
+                else:
+                    ok, message = sell(
+                        symbol,
+                        position["quantity"],
+                        quote,
+                        reason="MANUAL",
+                    )
+                    if ok:
+                        st.success(message)
+                        paper_account = get_account()
+                        paper_positions = paper_account.get("positions", {})
+                    else:
+                        st.error(message)
+
+        if paper_positions and st.button("CHECK PAPER STOPS & TARGETS", use_container_width=True, key="paper_check_exits"):
+            quotes = {}
+            for symbol in paper_positions:
+                quote = get_price(symbol)
+                if quote is not None:
+                    quotes[symbol] = quote
+            if not quotes:
+                st.warning("No valid Yahoo Finance quotes returned; paper positions were not changed.")
+            else:
+                exits = monitor_positions(quotes)
+                locked = check_daily_lock(quotes)
+                if exits:
+                    for ok, message in exits:
+                        (st.success if ok else st.error)(message)
+                else:
+                    st.info("No paper stop-loss or target levels were reached.")
+                if locked:
+                    st.error("Daily paper loss limit reached. New paper buys are locked for today.")
+                elif get_account().get("trading_locked"):
+                    st.warning("Paper buys remain locked by the account risk state.")
+                paper_account = get_account()
+                paper_positions = paper_account.get("positions", {})
+
+    if paper_positions:
+        st.dataframe(
+            pd.DataFrame([
+                {
+                    "symbol": symbol,
+                    "quantity": position["quantity"],
+                    "average_price": position["average_price"],
+                    "stop_loss": position.get("stop_loss"),
+                    "target": position.get("target"),
+                }
+                for symbol, position in paper_positions.items()
+            ]),
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.caption("No open paper positions.")
+
     st.markdown("### Self-learning / mistake review")
     lr=learning_report()
     c=st.columns(4)
