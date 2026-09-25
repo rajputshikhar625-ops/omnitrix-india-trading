@@ -1,353 +1,430 @@
 import os
-import re
 import json
 import time
 import math
-import difflib
+import hashlib
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import streamlit as st
 import yfinance as yf
-from gnews import GNews
 
-# Optional AI imports
+try:
+    from gnews import GNews
+except Exception:
+    GNews = None
+
 try:
     from groq import Groq
-except ImportError:
+except Exception:
     Groq = None
 
-
-# ============================================================
-# OMNITRIX AI — LOCAL INDIAN EQUITY TRADING TERMINAL
-# ============================================================
-# Phase 1:
-#   Indian cash equities
-#   Intraday/day trading
-#   No F&O
-#
-# Architecture:
-#   DATA -> SCANNER -> NEWS/THEMES -> AI -> STRATEGY -> RISK
-#                                      -> PAPER EXECUTION
-#
-# Live broker execution is intentionally separated from the AI.
-# ============================================================
-
-
-APP_NAME = "OMNITRIX AI"
-DATA_DIR = Path("data")
-TRADE_DIR = DATA_DIR / "trades"
-LOG_DIR = DATA_DIR / "logs"
-
-for directory in [DATA_DIR, TRADE_DIR, LOG_DIR]:
-    directory.mkdir(parents=True, exist_ok=True)
+try:
+    from openai import OpenAI
+except Exception:
+    OpenAI = None
 
 
 # ============================================================
-# PAGE CONFIG
+# OMNITRIX TERMINAL V2
+# Institutional Indian Equity Research + Paper Trading Terminal
+# ============================================================
+
+
+# ============================================================
+# 1. PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
-    page_title="OMNITRIX AI — India Trading Terminal",
-    page_icon="👽",
+    page_title="OMNITRIX TERMINAL",
+    page_icon="◈",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="expanded"
 )
 
 
 # ============================================================
-# OMNITRIX / BEN 10 INSPIRED UI
+# 2. PATHS
 # ============================================================
 
-BEN10_CSS = """
+BASE_DIR = Path(__file__).resolve().parent
+
+DATA_DIR = BASE_DIR / "data"
+LOG_DIR = DATA_DIR / "logs"
+TRADE_DIR = DATA_DIR / "trades"
+RESEARCH_DIR = DATA_DIR / "research"
+
+for folder in [DATA_DIR, LOG_DIR, TRADE_DIR, RESEARCH_DIR]:
+    folder.mkdir(parents=True, exist_ok=True)
+
+WATCHLIST_FILE = DATA_DIR / "watchlist.json"
+PAPER_ORDERS_FILE = TRADE_DIR / "paper_orders.csv"
+JOURNAL_FILE = TRADE_DIR / "journal.csv"
+RESEARCH_CACHE_FILE = RESEARCH_DIR / "research_cache.json"
+
+
+# ============================================================
+# 3. SESSION STATE
+# ============================================================
+
+DEFAULT_STATE = {
+    "page": "Overview",
+    "ai_enabled": False,
+    "ai_provider": "Local",
+    "ai_model": "",
+    "ai_endpoint": "http://localhost:11434/v1",
+    "ai_temperature": 0.1,
+    "ai_max_tokens": 1200,
+    "research_result": None,
+    "scanner_result": None,
+    "selected_stock": "RELIANCE",
+    "watchlist": [],
+    "paper_mode": True,
+    "system_logs": [],
+}
+
+for key, value in DEFAULT_STATE.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
+
+
+# ============================================================
+# 4. INDIAN EQUITY MASTER
+# ============================================================
+
+STOCKS = {
+    "RELIANCE": "RELIANCE.NS",
+    "TCS": "TCS.NS",
+    "INFY": "INFY.NS",
+    "HDFCBANK": "HDFCBANK.NS",
+    "ICICIBANK": "ICICIBANK.NS",
+    "SBIN": "SBIN.NS",
+    "BHARTIARTL": "BHARTIARTL.NS",
+    "ITC": "ITC.NS",
+    "LT": "LT.NS",
+    "AXISBANK": "AXISBANK.NS",
+    "KOTAKBANK": "KOTAKBANK.NS",
+    "HINDUNILVR": "HINDUNILVR.NS",
+    "MARUTI": "MARUTI.NS",
+    "M&M": "M&M.NS",
+    "SUNPHARMA": "SUNPHARMA.NS",
+    "TATAMOTORS": "TATAMOTORS.NS",
+    "TATASTEEL": "TATASTEEL.NS",
+    "ADANIENT": "ADANIENT.NS",
+    "ADANIPORTS": "ADANIPORTS.NS",
+    "NTPC": "NTPC.NS",
+    "POWERGRID": "POWERGRID.NS",
+    "ONGC": "ONGC.NS",
+    "COALINDIA": "COALINDIA.NS",
+    "JSWSTEEL": "JSWSTEEL.NS",
+    "HINDALCO": "HINDALCO.NS",
+    "WIPRO": "WIPRO.NS",
+    "TECHM": "TECHM.NS",
+    "HCLTECH": "HCLTECH.NS",
+    "LTIM": "LTIM.NS",
+    "TITAN": "TITAN.NS",
+    "ASIANPAINT": "ASIANPAINT.NS",
+    "ULTRACEMCO": "ULTRACEMCO.NS",
+    "NESTLEIND": "NESTLEIND.NS",
+    "BAJFINANCE": "BAJFINANCE.NS",
+    "BAJAJFINSV": "BAJAJFINSV.NS",
+    "SBILIFE": "SBILIFE.NS",
+    "HDFCLIFE": "HDFCLIFE.NS",
+    "DRREDDY": "DRREDDY.NS",
+    "CIPLA": "CIPLA.NS",
+    "EICHERMOT": "EICHERMOT.NS",
+    "HEROMOTOCO": "HEROMOTOCO.NS",
+    "BAJAJ-AUTO": "BAJAJ-AUTO.NS",
+    "APOLLOHOSP": "APOLLOHOSP.NS",
+    "TATACONSUM": "TATACONSUM.NS",
+    "TRENT": "TRENT.NS",
+    "BEL": "BEL.NS",
+    "HAL": "HAL.NS",
+    "BHEL": "BHEL.NS",
+    "IRFC": "IRFC.NS",
+    "RVNL": "RVNL.NS",
+    "IRCTC": "IRCTC.NS",
+    "IOC": "IOC.NS",
+    "BPCL": "BPCL.NS",
+    "GAIL": "GAIL.NS",
+    "DLF": "DLF.NS",
+    "LODHA": "LODHA.NS",
+    "PIDILITIND": "PIDILITIND.NS",
+    "DMART": "DMART.NS",
+    "ZOMATO": "ZOMATO.NS",
+    "PAYTM": "PAYTM.NS",
+    "JIOFIN": "JIOFIN.NS",
+    "INDUSINDBK": "INDUSINDBK.NS",
+    "PNB": "PNB.NS",
+    "BANKBARODA": "BANKBARODA.NS",
+    "CANBK": "CANBK.NS",
+    "IDFCFIRSTB": "IDFCFIRSTB.NS",
+    "FEDERALBNK": "FEDERALBNK.NS",
+    "YESBANK": "YESBANK.NS",
+    "INDIGO": "INDIGO.NS",
+    "ADANIGREEN": "ADANIGREEN.NS",
+    "ADANIPOWER": "ADANIPOWER.NS",
+    "TATAPOWER": "TATAPOWER.NS",
+    "SUZLON": "SUZLON.NS",
+    "IREDA": "IREDA.NS",
+    "DIXON": "DIXON.NS",
+    "POLYCAB": "POLYCAB.NS",
+    "PERSISTENT": "PERSISTENT.NS",
+    "COFORGE": "COFORGE.NS",
+    "MPHASIS": "MPHASIS.NS",
+    "INDUSTOWER": "INDUSTOWER.NS",
+    "BEL": "BEL.NS",
+}
+
+
+# ============================================================
+# 5. INSTITUTIONAL CSS
+# ============================================================
+
+CSS = """
 <style>
 
-:root {
-    --omni-green: #39ff14;
-    --omni-dark: #071009;
-    --omni-panel: #0c1710;
-    --omni-border: #234b2a;
-    --omni-text: #e9ffe8;
+html, body, [class*="css"] {
+    font-family: Inter, Arial, sans-serif;
 }
 
 .stApp {
-    background:
-        radial-gradient(circle at 15% 10%, rgba(57,255,20,0.08), transparent 25%),
-        radial-gradient(circle at 85% 80%, rgba(57,255,20,0.05), transparent 30%),
-        #050805;
+    background: #080b0f;
+    color: #ffffff;
 }
 
 [data-testid="stSidebar"] {
-    background: #071009;
-    border-right: 1px solid #234b2a;
+    background: #0b0f14;
+    border-right: 1px solid #252c34;
 }
 
-.omni-title {
-    font-size: 42px;
-    font-weight: 900;
-    letter-spacing: 2px;
-    color: #39ff14;
-    text-shadow: 0 0 12px rgba(57,255,20,0.45);
+[data-testid="stSidebar"] * {
+    color: #ffffff !important;
 }
 
-.omni-subtitle {
-    color: #a6cfa3;
-    font-size: 14px;
+h1, h2, h3, h4, h5, h6 {
+    color: #ffffff !important;
+    font-weight: 600;
 }
 
-.omni-card {
-    background: rgba(12,23,16,0.90);
-    border: 1px solid #234b2a;
-    border-radius: 14px;
-    padding: 18px;
+p, span, label, div {
+    color: #ffffff;
+}
+
+.main-title {
+    font-size: 23px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #ffffff;
+}
+
+.sub-title {
+    color: #8f9aa6 !important;
+    font-size: 12px;
+}
+
+.terminal-header {
+    background: #0d1218;
+    border: 1px solid #252c34;
+    padding: 12px 16px;
+    border-radius: 5px;
     margin-bottom: 12px;
 }
 
-.signal-buy {
-    color: #39ff14;
-    font-weight: 900;
+.status-open {
+    color: #23c483 !important;
+    font-weight: 700;
 }
 
-.signal-sell {
-    color: #ff5555;
-    font-weight: 900;
+.status-closed {
+    color: #e65b5b !important;
+    font-weight: 700;
 }
 
-.signal-neutral {
-    color: #ffd84d;
-    font-weight: 900;
+.metric-card {
+    background: #0d1218;
+    border: 1px solid #252c34;
+    border-radius: 5px;
+    padding: 12px;
+    min-height: 90px;
 }
 
-.small-muted {
-    color: #8ca88d;
-    font-size: 12px;
+.metric-label {
+    color: #87919c !important;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+}
+
+.metric-value {
+    color: #ffffff !important;
+    font-size: 21px;
+    font-weight: 650;
+    margin-top: 4px;
+}
+
+.metric-positive {
+    color: #20c997 !important;
+}
+
+.metric-negative {
+    color: #ef6b73 !important;
+}
+
+.section {
+    color: #ffffff !important;
+    font-size: 15px;
+    font-weight: 650;
+    margin-top: 12px;
+    margin-bottom: 8px;
+}
+
+.panel {
+    background: #0d1218;
+    border: 1px solid #252c34;
+    border-radius: 5px;
+    padding: 14px;
+    margin-bottom: 10px;
+}
+
+.small-text {
+    color: #8d98a4 !important;
+    font-size: 11px;
+}
+
+.signal-green {
+    color: #21c784 !important;
+    font-weight: 700;
+}
+
+.signal-red {
+    color: #ef626a !important;
+    font-weight: 700;
+}
+
+.signal-yellow {
+    color: #e7b84b !important;
+    font-weight: 700;
+}
+
+button {
+    border-radius: 4px !important;
+}
+
+.stButton > button {
+    background: #111820;
+    color: #ffffff !important;
+    border: 1px solid #303943;
+    font-weight: 600;
+}
+
+.stButton > button:hover {
+    border-color: #4d5965;
+    background: #171e26;
+}
+
+[data-testid="stMetric"] {
+    background: #0d1218;
+    border: 1px solid #252c34;
+    padding: 10px;
+    border-radius: 5px;
+}
+
+[data-testid="stMetricLabel"] {
+    color: #8d98a4 !important;
+}
+
+[data-testid="stMetricValue"] {
+    color: #ffffff !important;
+}
+
+input, textarea {
+    background: #0b1015 !important;
+    color: #ffffff !important;
+    border: 1px solid #303943 !important;
+}
+
+div[data-baseweb="select"] > div {
+    background: #0b1015 !important;
+    color: #ffffff !important;
+    border-color: #303943 !important;
+}
+
+.stDataFrame {
+    border: 1px solid #252c34;
+}
+
+hr {
+    border-color: #252c34;
 }
 
 </style>
 """
 
-st.markdown(BEN10_CSS, unsafe_allow_html=True)
+st.markdown(CSS, unsafe_allow_html=True)
 
 
 # ============================================================
-# INSTRUMENT MASTER
+# 6. LOGGING
 # ============================================================
 
-# This is intentionally expandable.
-# Eventually we should replace this with a complete NSE/BSE
-# instrument master downloaded/imported into the local database.
+def log_event(message):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    entry = f"{timestamp} | {message}"
 
-INSTRUMENTS = [
-    ("RELIANCE", "Reliance Industries", "RELIANCE.NS", "500325", "Energy"),
-    ("TCS", "Tata Consultancy Services", "TCS.NS", "532540", "IT"),
-    ("TATAMOTORS", "Tata Motors", "TATAMOTORS.NS", "500570", "Auto"),
-    ("TATASTEEL", "Tata Steel", "TATASTEEL.NS", "500470", "Metals"),
-    ("TATAPOWER", "Tata Power", "TATAPOWER.NS", "500400", "Power"),
-    ("INFY", "Infosys", "INFY.NS", "500209", "IT"),
-    ("HDFCBANK", "HDFC Bank", "HDFCBANK.NS", "500180", "Banking"),
-    ("ICICIBANK", "ICICI Bank", "ICICIBANK.NS", "532174", "Banking"),
-    ("SBIN", "State Bank of India", "SBIN.NS", "500112", "Banking"),
-    ("AXISBANK", "Axis Bank", "AXISBANK.NS", "532215", "Banking"),
-    ("KOTAKBANK", "Kotak Mahindra Bank", "KOTAKBANK.NS", "500247", "Banking"),
-    ("LT", "Larsen & Toubro", "LT.NS", "500510", "Infrastructure"),
-    ("BHARTIARTL", "Bharti Airtel", "BHARTIARTL.NS", "532454", "Telecom"),
-    ("ITC", "ITC", "ITC.NS", "500875", "FMCG"),
-    ("HINDUNILVR", "Hindustan Unilever", "HINDUNILVR.NS", "500696", "FMCG"),
-    ("MARUTI", "Maruti Suzuki India", "MARUTI.NS", "532500", "Auto"),
-    ("M&M", "Mahindra & Mahindra", "M&M.NS", "500520", "Auto"),
-    ("SUNPHARMA", "Sun Pharmaceutical", "SUNPHARMA.NS", "524715", "Pharma"),
-    ("DRREDDY", "Dr Reddy's Laboratories", "DRREDDY.NS", "500124", "Pharma"),
-    ("CIPLA", "Cipla", "CIPLA.NS", "500087", "Pharma"),
-    ("ADANIENT", "Adani Enterprises", "ADANIENT.NS", "512599", "Conglomerate"),
-    ("ADANIPORTS", "Adani Ports", "ADANIPORTS.NS", "532921", "Infrastructure"),
-    ("NTPC", "NTPC", "NTPC.NS", "532555", "Power"),
-    ("POWERGRID", "Power Grid Corporation", "POWERGRID.NS", "532898", "Power"),
-    ("ONGC", "Oil & Natural Gas Corporation", "ONGC.NS", "500312", "Energy"),
-    ("COALINDIA", "Coal India", "COALINDIA.NS", "533278", "Mining"),
-    ("BEL", "Bharat Electronics", "BEL.NS", "500049", "Defence"),
-    ("HAL", "Hindustan Aeronautics", "HAL.NS", "541154", "Defence"),
-    ("TRENT", "Trent", "TRENT.NS", "500251", "Retail"),
-    ("ZOMATO", "Eternal / Zomato", "ZOMATO.NS", "543320", "Consumer Tech"),
-    ("PAYTM", "One 97 Communications", "PAYTM.NS", "543396", "Fintech"),
-    ("IRCTC", "Indian Railway Catering & Tourism", "IRCTC.NS", "542830", "Railways"),
-    ("DLF", "DLF", "DLF.NS", "532868", "Real Estate"),
-    ("ULTRACEMCO", "UltraTech Cement", "ULTRACEMCO.NS", "532538", "Cement"),
-    ("ASIANPAINT", "Asian Paints", "ASIANPAINT.NS", "500820", "Paints"),
-    ("EICHERMOT", "Eicher Motors", "EICHERMOT.NS", "505200", "Auto"),
-    ("BAJFINANCE", "Bajaj Finance", "BAJFINANCE.NS", "500034", "NBFC"),
-    ("BAJAJFINSV", "Bajaj Finserv", "BAJAJFINSV.NS", "532978", "Financial"),
-    ("HCLTECH", "HCL Technologies", "HCLTECH.NS", "532281", "IT"),
-    ("WIPRO", "Wipro", "WIPRO.NS", "507685", "IT"),
-    ("TECHM", "Tech Mahindra", "TECHM.NS", "532755", "IT"),
-    ("JSWSTEEL", "JSW Steel", "JSWSTEEL.NS", "500228", "Metals"),
-    ("HINDALCO", "Hindalco Industries", "HINDALCO.NS", "500440", "Metals"),
-    ("GRASIM", "Grasim Industries", "GRASIM.NS", "500300", "Conglomerate"),
-    ("NESTLEIND", "Nestle India", "NESTLEIND.NS", "500790", "FMCG"),
-    ("BRITANNIA", "Britannia Industries", "BRITANNIA.NS", "500825", "FMCG"),
-    ("APOLLOHOSP", "Apollo Hospitals", "APOLLOHOSP.NS", "508869", "Healthcare"),
-    ("DIVISLAB", "Divi's Laboratories", "DIVISLAB.NS", "532488", "Pharma"),
-    ("TITAN", "Titan Company", "TITAN.NS", "500114", "Consumer"),
-    ("HEROMOTOCO", "Hero MotoCorp", "HEROMOTOCO.NS", "500182", "Auto"),
-    ("TVSMOTOR", "TVS Motor Company", "TVSMOTOR.NS", "532343", "Auto"),
-    ("INDUSINDBK", "IndusInd Bank", "INDUSINDBK.NS", "532187", "Banking"),
-    ("BANKBARODA", "Bank of Baroda", "BANKBARODA.NS", "532134", "Banking"),
-    ("PNB", "Punjab National Bank", "PNB.NS", "532461", "Banking"),
-    ("IOC", "Indian Oil Corporation", "IOC.NS", "530965", "Energy"),
-    ("BPCL", "Bharat Petroleum", "BPCL.NS", "500547", "Energy"),
-    ("HDFCLIFE", "HDFC Life Insurance", "HDFCLIFE.NS", "540777", "Insurance"),
-    ("SBILIFE", "SBI Life Insurance", "SBILIFE.NS", "540719", "Insurance"),
-    ("ICICIPRULI", "ICICI Prudential Life", "ICICIPRULI.NS", "540133", "Insurance"),
-    ("DIXON", "Dixon Technologies", "DIXON.NS", "540699", "Electronics"),
-    ("POLYCAB", "Polycab India", "POLYCAB.NS", "542652", "Electrical"),
-    ("VOLTAS", "Voltas", "VOLTAS.NS", "500575", "Consumer"),
-    ("CROMPTON", "Crompton Greaves Consumer", "CROMPTON.NS", "539876", "Consumer"),
-    ("INDIGO", "InterGlobe Aviation", "INDIGO.NS", "539448", "Aviation"),
-    ("ADANIGREEN", "Adani Green Energy", "ADANIGREEN.NS", "541450", "Renewable Energy"),
-    ("TATACONSUM", "Tata Consumer Products", "TATACONSUM.NS", "500800", "FMCG"),
-    ("PIDILITIND", "Pidilite Industries", "PIDILITIND.NS", "500331", "Chemicals"),
-    ("SIEMENS", "Siemens India", "SIEMENS.NS", "500550", "Industrial"),
-    ("ABB", "ABB India", "ABB.NS", "500002", "Industrial"),
-    ("CUMMINSIND", "Cummins India", "CUMMINSIND.NS", "500480", "Industrial"),
-    ("BHEL", "Bharat Heavy Electricals", "BHEL.NS", "500103", "Industrial"),
-    ("RVNL", "Rail Vikas Nigam", "RVNL.NS", "542649", "Railways"),
-    ("IRFC", "Indian Railway Finance Corporation", "IRFC.NS", "543257", "Railways"),
-    ("BANDHANBNK", "Bandhan Bank", "BANDHANBNK.NS", "541153", "Banking"),
-    ("IDFCFIRSTB", "IDFC First Bank", "IDFCFIRSTB.NS", "539437", "Banking"),
-    ("YESBANK", "Yes Bank", "YESBANK.NS", "532648", "Banking"),
-    ("CANBK", "Canara Bank", "CANBK.NS", "532483", "Banking"),
-    ("TATAELXSI", "Tata Elxsi", "TATAELXSI.NS", "500408", "IT"),
-    ("PERSISTENT", "Persistent Systems", "PERSISTENT.NS", "533179", "IT"),
-    ("COFORGE", "Coforge", "COFORGE.NS", "532541", "IT"),
-    ("LTIM", "LTIMindtree", "LTIM.NS", "540005", "IT"),
-    ("MOTHERSON", "Samvardhana Motherson", "MOTHERSON.NS", "517334", "Auto"),
-    ("ASHOKLEY", "Ashok Leyland", "ASHOKLEY.NS", "500477", "Auto"),
-    ("BOSCHLTD", "Bosch", "BOSCHLTD.NS", "500530", "Auto"),
-    ("VEDL", "Vedanta", "VEDL.NS", "500295", "Metals"),
-    ("SAIL", "Steel Authority of India", "SAIL.NS", "500113", "Metals"),
-    ("JINDALSTEL", "Jindal Steel", "JINDALSTEL.NS", "532286", "Metals"),
-    ("NMDC", "NMDC", "NMDC.NS", "526371", "Mining"),
-    ("RECLTD", "REC", "RECLTD.NS", "532955", "Financial"),
-    ("PFC", "Power Finance Corporation", "PFC.NS", "532810", "Financial"),
-]
+    st.session_state.system_logs.append(entry)
 
+    if len(st.session_state.system_logs) > 100:
+        st.session_state.system_logs = st.session_state.system_logs[-100:]
 
-INSTRUMENT_DF = pd.DataFrame(
-    INSTRUMENTS,
-    columns=["symbol", "name", "yf_symbol", "bse_code", "sector"]
-)
+    try:
+        with open(LOG_DIR / "terminal.log", "a", encoding="utf-8") as f:
+            f.write(entry + "\n")
+    except Exception:
+        pass
 
 
 # ============================================================
-# SEARCH ENGINE
+# 7. WATCHLIST
 # ============================================================
 
-ALIASES = {
-    "tata motors": "TATAMOTORS",
-    "tata motor": "TATAMOTORS",
-    "tata motors ltd": "TATAMOTORS",
-    "tcs": "TCS",
-    "reliance": "RELIANCE",
-    "hdfc": "HDFCBANK",
-    "hdfc bank": "HDFCBANK",
-    "icici": "ICICIBANK",
-    "sbi": "SBIN",
-    "state bank": "SBIN",
-    "infosys": "INFY",
-    "infy": "INFY",
-    "zomato": "ZOMATO",
-    "eternal": "ZOMATO",
-    "larsen": "LT",
-    "l&t": "LT",
-    "mahindra": "M&M",
-    "m and m": "M&M",
-}
+def load_watchlist():
+    if WATCHLIST_FILE.exists():
+        try:
+            return json.loads(WATCHLIST_FILE.read_text())
+        except Exception:
+            pass
+
+    return ["RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "SBIN"]
 
 
-def normalize_text(value: str) -> str:
-    value = value.lower().strip()
-    value = re.sub(r"[^a-z0-9& ]+", " ", value)
-    value = re.sub(r"\s+", " ", value)
-    return value
+def save_watchlist():
+    WATCHLIST_FILE.write_text(
+        json.dumps(st.session_state.watchlist, indent=2)
+    )
 
 
-def search_instruments(query: str, limit: int = 10) -> pd.DataFrame:
-    query_norm = normalize_text(query)
-
-    if not query_norm:
-        return INSTRUMENT_DF.head(limit)
-
-    # Direct alias
-    if query_norm in ALIASES:
-        symbol = ALIASES[query_norm]
-        return INSTRUMENT_DF[
-            INSTRUMENT_DF["symbol"].str.upper() == symbol.upper()
-        ].head(limit)
-
-    rows = []
-
-    for _, row in INSTRUMENT_DF.iterrows():
-        symbol = normalize_text(row["symbol"])
-        name = normalize_text(row["name"])
-        sector = normalize_text(row["sector"])
-
-        score = 0
-
-        if query_norm == symbol:
-            score += 100
-        if query_norm == name:
-            score += 100
-
-        if name.startswith(query_norm):
-            score += 80
-
-        if symbol.startswith(query_norm):
-            score += 70
-
-        if query_norm in name:
-            score += 60
-
-        if query_norm in symbol:
-            score += 50
-
-        similarity_name = difflib.SequenceMatcher(
-            None, query_norm, name
-        ).ratio()
-
-        similarity_symbol = difflib.SequenceMatcher(
-            None, query_norm, symbol
-        ).ratio()
-
-        score += max(similarity_name, similarity_symbol) * 40
-
-        if query_norm in sector:
-            score += 10
-
-        rows.append((score, row))
-
-    rows.sort(key=lambda x: x[0], reverse=True)
-
-    result = pd.DataFrame([r for score, r in rows[:limit]])
-
-    return result
+if not st.session_state.watchlist:
+    st.session_state.watchlist = load_watchlist()
 
 
 # ============================================================
-# MARKET DATA
+# 8. MARKET DATA
 # ============================================================
 
-@st.cache_data(ttl=20, show_spinner=False)
-def get_history(yf_symbol: str, period="5d", interval="15m") -> pd.DataFrame:
+@st.cache_data(ttl=60, show_spinner=False)
+def get_market_data(symbol, period="3mo", interval="1d"):
+    ticker = STOCKS.get(symbol, symbol)
+
     try:
         df = yf.download(
-            yf_symbol,
+            ticker,
             period=period,
             interval=interval,
-            progress=False,
             auto_adjust=False,
-            threads=False,
+            progress=False
         )
 
         if df.empty:
@@ -356,1622 +433,2753 @@ def get_history(yf_symbol: str, period="5d", interval="15m") -> pd.DataFrame:
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
 
-        df = df.dropna()
+        df.columns = [str(c).title() for c in df.columns]
 
-        return df
+        return df.dropna(subset=["Close"])
 
     except Exception:
         return pd.DataFrame()
 
 
-def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty:
-        return df
+# ============================================================
+# 9. TECHNICAL ENGINE
+# ============================================================
 
-    result = df.copy()
-
-    close = result["Close"]
-    high = result["High"]
-    low = result["Low"]
-    volume = result["Volume"]
-
-    result["SMA20"] = close.rolling(20).mean()
-    result["SMA50"] = close.rolling(50).mean()
-
-    result["EMA9"] = close.ewm(span=9, adjust=False).mean()
-    result["EMA21"] = close.ewm(span=21, adjust=False).mean()
-
-    delta = close.diff()
+def calculate_rsi(series, period=14):
+    delta = series.diff()
 
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
 
-    avg_gain = gain.rolling(14).mean()
-    avg_loss = loss.rolling(14).mean()
+    avg_gain = gain.rolling(period).mean()
+    avg_loss = loss.rolling(period).mean()
 
     rs = avg_gain / avg_loss.replace(0, np.nan)
 
-    result["RSI"] = 100 - (100 / (1 + rs))
-
-    result["ATR"] = (
-        pd.concat(
-            [
-                high - low,
-                (high - close.shift()).abs(),
-                (low - close.shift()).abs(),
-            ],
-            axis=1,
-        )
-        .max(axis=1)
-        .rolling(14)
-        .mean()
-    )
-
-    result["VOL_AVG20"] = volume.rolling(20).mean()
-
-    result["VOL_RATIO"] = (
-        volume / result["VOL_AVG20"].replace(0, np.nan)
-    )
-
-    result["DAY_HIGH_20"] = high.rolling(20).max()
-    result["DAY_LOW_20"] = low.rolling(20).min()
-
-    return result
+    return 100 - (100 / (1 + rs))
 
 
-# ============================================================
-# TECHNICAL SIGNAL ENGINE
-# ============================================================
+def calculate_indicators(df):
+    if df.empty:
+        return df
 
-def analyze_symbol(row: pd.Series) -> Dict:
+    df = df.copy()
 
-    yf_symbol = row["yf_symbol"]
+    close = df["Close"]
+    volume = df["Volume"]
 
-    hist = get_history(
-        yf_symbol,
-        period="5d",
-        interval="15m",
-    )
+    df["SMA20"] = close.rolling(20).mean()
+    df["SMA50"] = close.rolling(50).mean()
 
-    if hist.empty or len(hist) < 20:
-        return {
-            "symbol": row["symbol"],
-            "name": row["name"],
-            "sector": row["sector"],
-            "price": np.nan,
-            "change_pct": np.nan,
-            "rsi": np.nan,
-            "volume_ratio": np.nan,
-            "trend": "DATA UNAVAILABLE",
-            "signal": "NO DATA",
-            "score": 0,
-        }
+    df["EMA9"] = close.ewm(span=9, adjust=False).mean()
+    df["EMA21"] = close.ewm(span=21, adjust=False).mean()
 
-    data = calculate_indicators(hist)
+    df["RSI"] = calculate_rsi(close)
 
-    latest = data.iloc[-1]
-    previous = data.iloc[-2]
+    high_low = df["High"] - df["Low"]
+    high_close = abs(df["High"] - close.shift())
+    low_close = abs(df["Low"] - close.shift())
 
-    price = float(latest["Close"])
+    true_range = pd.concat(
+        [high_low, high_close, low_close],
+        axis=1
+    ).max(axis=1)
 
-    previous_close = float(previous["Close"])
+    df["ATR"] = true_range.rolling(14).mean()
 
-    change_pct = (
-        (price - previous_close)
-        / previous_close
-        * 100
-    )
+    df["VolumeAvg20"] = volume.rolling(20).mean()
+    df["VolumeRatio"] = volume / df["VolumeAvg20"]
 
-    rsi = float(latest["RSI"]) if not pd.isna(latest["RSI"]) else 50
+    df["Return1D"] = close.pct_change() * 100
+    df["Return5D"] = close.pct_change(5) * 100
+    df["Return20D"] = close.pct_change(20) * 100
 
-    volume_ratio = (
-        float(latest["VOL_RATIO"])
-        if not pd.isna(latest["VOL_RATIO"])
-        else 1
-    )
+    return df
 
-    ema9 = float(latest["EMA9"])
-    ema21 = float(latest["EMA21"])
 
-    sma20 = (
-        float(latest["SMA20"])
-        if not pd.isna(latest["SMA20"])
-        else price
-    )
+def get_signal(row):
 
-    score = 0
+    if pd.isna(row.get("RSI")):
+        return "NEUTRAL"
 
-    # Trend
-    if price > ema9 > ema21:
-        trend = "BULLISH"
-        score += 2
-    elif price < ema9 < ema21:
-        trend = "BEARISH"
-        score -= 2
+    bullish = 0
+    bearish = 0
+
+    if row["EMA9"] > row["EMA21"]:
+        bullish += 1
     else:
-        trend = "SIDEWAYS"
+        bearish += 1
 
-    # RSI
-    if 50 <= rsi <= 70:
-        score += 1
-    elif 30 <= rsi < 50:
-        score -= 0.5
-    elif rsi > 75:
-        score -= 1
-
-    # Volume confirmation
-    if volume_ratio >= 2:
-        score += 2
-    elif volume_ratio >= 1.3:
-        score += 1
-
-    # Momentum
-    if price > sma20:
-        score += 1
+    if row["Close"] > row["SMA20"]:
+        bullish += 1
     else:
-        score -= 1
+        bearish += 1
 
-    if score >= 4:
-        signal = "WATCH BUY"
-    elif score <= -3:
-        signal = "WATCH SELL"
+    if row["Close"] > row["SMA50"]:
+        bullish += 1
     else:
-        signal = "NEUTRAL"
+        bearish += 1
 
-    return {
-        "symbol": row["symbol"],
-        "name": row["name"],
-        "sector": row["sector"],
-        "price": round(price, 2),
-        "change_pct": round(change_pct, 2),
-        "rsi": round(rsi, 2),
-        "volume_ratio": round(volume_ratio, 2),
-        "trend": trend,
-        "signal": signal,
-        "score": round(score, 2),
-    }
+    if row["RSI"] >= 55:
+        bullish += 1
+    elif row["RSI"] <= 45:
+        bearish += 1
 
+    if bullish >= 3:
+        return "BULLISH"
 
-# ============================================================
-# SCANNER
-# ============================================================
+    if bearish >= 3:
+        return "BEARISH"
 
-def scan_market(universe: pd.DataFrame) -> pd.DataFrame:
-
-    results = []
-
-    progress = st.progress(0)
-
-    total = len(universe)
-
-    for i, (_, row) in enumerate(universe.iterrows()):
-
-        result = analyze_symbol(row)
-
-        results.append(result)
-
-        progress.progress((i + 1) / total)
-
-    progress.empty()
-
-    return pd.DataFrame(results)
+    return "NEUTRAL"
 
 
 # ============================================================
-# NEWS ENGINE
+# 10. MARKET STATUS
 # ============================================================
 
-@st.cache_data(ttl=300, show_spinner=False)
-def get_news(query: str, max_results: int = 10) -> List[Dict]:
+def market_status():
+
+    now = datetime.now()
+
+    weekday = now.weekday()
+
+    if weekday >= 5:
+        return "CLOSED"
+
+    market_open = now.replace(
+        hour=9,
+        minute=15,
+        second=0,
+        microsecond=0
+    )
+
+    market_close = now.replace(
+        hour=15,
+        minute=30,
+        second=0,
+        microsecond=0
+    )
+
+    if market_open <= now <= market_close:
+        return "OPEN"
+
+    return "CLOSED"
+
+
+# ============================================================
+# 11. NEWS
+# ============================================================
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_news(symbol):
+
+    if GNews is None:
+        return []
 
     try:
-
         google_news = GNews(
             language="en",
             country="IN",
             period="2d",
-            max_results=max_results,
+            max_results=8
         )
 
-        return google_news.get_news(query)
+        results = google_news.get_news(
+            f"{symbol} stock India NSE"
+        )
+
+        return results or []
 
     except Exception:
         return []
 
 
-def news_to_text(results: List[Dict]) -> str:
-
-    if not results:
-        return "No recent news available."
-
-    output = []
-
-    for item in results:
-
-        title = item.get("title", "")
-        description = item.get("description", "")
-        publisher = item.get("publisher", "")
-
-        if isinstance(publisher, dict):
-            publisher = publisher.get("title", "")
-
-        output.append(
-            f"Headline: {title}\n"
-            f"Publisher: {publisher}\n"
-            f"Description: {description}\n"
-        )
-
-    return "\n".join(output)
-
-
 # ============================================================
-# THEME / TREND DETECTION
+# 12. THEMATIC ENGINE
 # ============================================================
 
 THEMES = {
     "Artificial Intelligence": [
         "artificial intelligence",
-        "AI",
-        "generative AI",
+        "ai",
         "machine learning",
+        "data center",
+        "cloud"
     ],
-    "Robotics": [
+
+    "Robotics & Automation": [
         "robot",
         "robotics",
         "automation",
+        "industrial automation"
     ],
+
     "Defence": [
         "defence",
         "defense",
         "missile",
-        "military",
+        "drone",
+        "military"
     ],
-    "Renewable Energy": [
+
+    "Renewables": [
         "solar",
+        "wind",
         "renewable",
         "green energy",
-        "wind power",
+        "battery"
     ],
+
     "Electric Vehicles": [
-        "EV",
         "electric vehicle",
+        "ev",
         "battery",
-        "charging",
+        "charging"
     ],
+
     "Semiconductors": [
         "semiconductor",
         "chip",
         "fab",
-        "electronics",
+        "electronics"
     ],
+
     "Railways": [
         "railway",
         "rail",
-        "vande bharat",
+        "metro"
     ],
+
     "Infrastructure": [
         "infrastructure",
+        "construction",
         "roads",
         "highway",
-        "construction",
+        "capital expenditure"
     ],
 }
 
 
-def detect_themes(news_items: List[Dict]) -> pd.DataFrame:
+def detect_themes(news):
 
-    counts = []
+    detected = []
 
-    combined_text = " ".join(
+    text = " ".join(
         [
-            f"{x.get('title', '')} {x.get('description', '')}"
-            for x in news_items
+            str(x.get("title", "")) + " " +
+            str(x.get("description", ""))
+            for x in news
         ]
     ).lower()
 
     for theme, keywords in THEMES.items():
 
-        hits = 0
-        matched = []
-
-        for keyword in keywords:
-
-            count = combined_text.count(keyword.lower())
-
-            if count:
-                hits += count
-                matched.append(keyword)
-
-        counts.append(
-            {
-                "Theme": theme,
-                "Mentions": hits,
-                "Matched Terms": ", ".join(matched),
-            }
+        matches = sum(
+            1 for keyword in keywords
+            if keyword in text
         )
 
-    return pd.DataFrame(counts).sort_values(
-        "Mentions",
-        ascending=False,
-    )
+        if matches:
+            detected.append(theme)
+
+    return detected
 
 
 # ============================================================
-# AI ENGINE
+# 13. FUNDAMENTAL DATA
 # ============================================================
 
-def get_groq_client(api_key: str):
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_fundamentals(symbol):
 
-    if not Groq:
-        raise RuntimeError(
-            "Groq package is not installed. "
-            "Run: pip install groq"
-        )
+    ticker_symbol = STOCKS.get(symbol, symbol)
 
-    return Groq(api_key=api_key)
+    try:
 
+        ticker = yf.Ticker(ticker_symbol)
 
-def ask_ai(
-    api_key: str,
-    model: str,
-    system_prompt: str,
-    user_prompt: str,
-) -> str:
+        info = ticker.info
 
-    client = get_groq_client(api_key)
+        return {
+            "Market Cap": info.get("marketCap"),
+            "PE": info.get("trailingPE"),
+            "Forward PE": info.get("forwardPE"),
+            "EPS": info.get("trailingEps"),
+            "ROE": info.get("returnOnEquity"),
+            "Profit Margin": info.get("profitMargins"),
+            "Revenue Growth": info.get("revenueGrowth"),
+            "Debt/Equity": info.get("debtToEquity"),
+            "52W High": info.get("fiftyTwoWeekHigh"),
+            "52W Low": info.get("fiftyTwoWeekLow"),
+            "Sector": info.get("sector"),
+            "Industry": info.get("industry"),
+        }
 
-    response = client.chat.completions.create(
-        model=model,
-        temperature=0.1,
-        messages=[
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            {
-                "role": "user",
-                "content": user_prompt,
-            },
-        ],
-    )
-
-    return response.choices[0].message.content
+    except Exception:
+        return {}
 
 
 # ============================================================
-# RISK ENGINE
+# 14. DETERMINISTIC SCANNER
 # ============================================================
 
-class RiskEngine:
+def scan_stock(symbol):
 
-    def __init__(
-        self,
-        max_daily_loss: float,
-        max_position_value: float,
-        max_trades_per_day: int,
-        minimum_rr: float,
-    ):
+    df = get_market_data(symbol, period="3mo")
 
-        self.max_daily_loss = max_daily_loss
-        self.max_position_value = max_position_value
-        self.max_trades_per_day = max_trades_per_day
-        self.minimum_rr = minimum_rr
+    if df.empty or len(df) < 55:
+        return None
 
-    def validate_trade(
-        self,
-        action: str,
-        entry: float,
-        stop_loss: float,
-        target: float,
-        quantity: int,
-        current_daily_pnl: float,
-        trade_count: int,
-    ) -> Tuple[bool, List[str]]:
+    df = calculate_indicators(df)
 
-        reasons = []
+    row = df.iloc[-1]
 
-        if action not in ["BUY", "SELL"]:
-            reasons.append("Invalid action.")
+    price = float(row["Close"])
 
-        if entry <= 0:
-            reasons.append("Invalid entry price.")
+    signal = get_signal(row)
 
-        if stop_loss <= 0 or target <= 0:
-            reasons.append("Invalid stop or target.")
+    score = 0
 
-        if quantity <= 0:
-            reasons.append("Invalid quantity.")
+    if row["EMA9"] > row["EMA21"]:
+        score += 20
 
-        position_value = entry * quantity
+    if price > row["SMA20"]:
+        score += 20
 
-        if position_value > self.max_position_value:
-            reasons.append("Position value exceeds limit.")
+    if price > row["SMA50"]:
+        score += 20
 
-        if current_daily_pnl <= -abs(self.max_daily_loss):
-            reasons.append("Daily loss limit reached.")
+    if 50 <= row["RSI"] <= 70:
+        score += 20
 
-        if trade_count >= self.max_trades_per_day:
-            reasons.append("Maximum daily trades reached.")
+    if row["VolumeRatio"] >= 1.2:
+        score += 20
 
-        risk = abs(entry - stop_loss)
-        reward = abs(target - entry)
-
-        rr = reward / risk if risk > 0 else 0
-
-        if rr < self.minimum_rr:
-            reasons.append(
-                f"Risk/reward {rr:.2f} is below "
-                f"required {self.minimum_rr:.2f}."
-            )
-
-        return len(reasons) == 0, reasons
+    return {
+        "Symbol": symbol,
+        "Price": round(price, 2),
+        "1D %": round(float(row["Return1D"]), 2),
+        "5D %": round(float(row["Return5D"]), 2),
+        "RSI": round(float(row["RSI"]), 1),
+        "Volume Ratio": round(float(row["VolumeRatio"]), 2),
+        "Signal": signal,
+        "Score": score,
+    }
 
 
-# ============================================================
-# PAPER EXECUTION ENGINE
-# ============================================================
+def run_scanner(limit=80):
 
-def load_paper_trades() -> pd.DataFrame:
+    results = []
 
-    path = TRADE_DIR / "paper_trades.csv"
+    symbols = list(STOCKS.keys())[:limit]
 
-    if path.exists():
+    progress = st.progress(0)
+
+    for index, symbol in enumerate(symbols):
 
         try:
-            return pd.read_csv(path)
+
+            result = scan_stock(symbol)
+
+            if result:
+                results.append(result)
+
+        except Exception as error:
+            log_event(
+                f"Scanner error {symbol}: {error}"
+            )
+
+        progress.progress(
+            (index + 1) / len(symbols)
+        )
+
+    progress.empty()
+
+    if not results:
+        return pd.DataFrame()
+
+    result_df = pd.DataFrame(results)
+
+    return result_df.sort_values(
+        "Score",
+        ascending=False
+    )
+
+
+# ============================================================
+# 15. AI CACHE
+# ============================================================
+
+def load_research_cache():
+
+    if RESEARCH_CACHE_FILE.exists():
+
+        try:
+            return json.loads(
+                RESEARCH_CACHE_FILE.read_text()
+            )
+
         except Exception:
             pass
 
-    return pd.DataFrame(
-        columns=[
-            "timestamp",
-            "symbol",
-            "action",
-            "entry",
-            "stop_loss",
-            "target",
-            "quantity",
-            "status",
-            "pnl",
-        ]
+    return {}
+
+
+def save_research_cache(cache):
+
+    RESEARCH_CACHE_FILE.write_text(
+        json.dumps(
+            cache,
+            indent=2
+        )
     )
 
 
-def save_paper_trade(trade: Dict):
+def research_cache_key(symbol, model):
 
-    df = load_paper_trades()
+    raw = f"{symbol}|{model}|{datetime.now().strftime('%Y-%m-%d')}"
 
-    new_row = pd.DataFrame([trade])
-
-    df = pd.concat(
-        [df, new_row],
-        ignore_index=True,
-    )
-
-    df.to_csv(
-        TRADE_DIR / "paper_trades.csv",
-        index=False,
-    )
+    return hashlib.sha256(
+        raw.encode()
+    ).hexdigest()
 
 
 # ============================================================
-# BROKER ABSTRACTION
+# 16. AI DEPLOYMENT
 # ============================================================
 
-class BrokerAdapter:
+def get_ai_client():
 
-    name = "Abstract Broker"
+    provider = st.session_state.ai_provider
 
-    def connect(self):
-        raise NotImplementedError
+    if provider == "Local":
 
-    def place_equity_order(
-        self,
+        if OpenAI is None:
+            return None
+
+        endpoint = st.session_state.ai_endpoint
+
+        return OpenAI(
+            base_url=endpoint,
+            api_key=os.getenv(
+                "LOCAL_LLM_API_KEY",
+                "local"
+            )
+        )
+
+    if provider == "Groq":
+
+        if Groq is None:
+            return None
+
+        api_key = st.session_state.get(
+            "groq_api_key",
+            ""
+        )
+
+        if not api_key:
+            api_key = os.getenv(
+                "GROQ_API_KEY",
+                ""
+            )
+
+        if not api_key:
+            return None
+
+        return Groq(
+            api_key=api_key
+        )
+
+    return None
+
+
+def call_ai(prompt):
+
+    if not st.session_state.ai_enabled:
+        return None
+
+    client = get_ai_client()
+
+    if client is None:
+        return None
+
+    provider = st.session_state.ai_provider
+    model = st.session_state.ai_model
+
+    try:
+
+        if provider == "Local":
+
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are an institutional equity "
+                            "research assistant. "
+                            "Do not invent market data. "
+                            "Clearly separate facts, "
+                            "analysis and uncertainty."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=st.session_state.ai_temperature,
+                max_tokens=st.session_state.ai_max_tokens
+            )
+
+        else:
+
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are an institutional equity "
+                            "research assistant. "
+                            "Do not invent market data."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=st.session_state.ai_temperature,
+                max_tokens=st.session_state.ai_max_tokens
+            )
+
+        return response.choices[0].message.content
+
+    except Exception as error:
+
+        log_event(
+            f"AI error: {error}"
+        )
+
+        return f"AI ERROR: {error}"
+
+
+# ============================================================
+# 17. STOCK RESEARCH ENGINE
+# ============================================================
+
+def build_research_package(symbol):
+
+    df = get_market_data(
         symbol,
-        side,
-        quantity,
-        order_type="MARKET",
-    ):
-        raise NotImplementedError
+        period="1y"
+    )
+
+    if df.empty:
+        return None
+
+    df = calculate_indicators(df)
+
+    latest = df.iloc[-1]
+
+    fundamentals = get_fundamentals(symbol)
+
+    news = get_news(symbol)
+
+    themes = detect_themes(news)
+
+    package = {
+
+        "symbol": symbol,
+
+        "price": round(
+            float(latest["Close"]),
+            2
+        ),
+
+        "change_1d": round(
+            float(latest["Return1D"]),
+            2
+        ),
+
+        "change_5d": round(
+            float(latest["Return5D"]),
+            2
+        ),
+
+        "rsi": round(
+            float(latest["RSI"]),
+            2
+        ),
+
+        "atr": round(
+            float(latest["ATR"]),
+            2
+        ),
+
+        "volume_ratio": round(
+            float(latest["VolumeRatio"]),
+            2
+        ),
+
+        "ema9": round(
+            float(latest["EMA9"]),
+            2
+        ),
+
+        "ema21": round(
+            float(latest["EMA21"]),
+            2
+        ),
+
+        "sma20": round(
+            float(latest["SMA20"]),
+            2
+        ),
+
+        "sma50": round(
+            float(latest["SMA50"]),
+            2
+        ),
+
+        "signal": get_signal(latest),
+
+        "fundamentals": fundamentals,
+
+        "themes": themes,
+
+        "news": [
+            {
+                "title": item.get("title"),
+                "publisher": (
+                    item.get(
+                        "publisher",
+                        {}
+                    ).get(
+                        "title",
+                        "Unknown"
+                    )
+                    if isinstance(
+                        item.get("publisher"),
+                        dict
+                    )
+                    else str(
+                        item.get(
+                            "publisher",
+                            "Unknown"
+                        )
+                    )
+                ),
+                "description": item.get(
+                    "description",
+                    ""
+                )
+            }
+            for item in news
+        ],
+    }
+
+    return package
 
 
-class GrowwBroker(BrokerAdapter):
+def generate_quick_research(package):
 
-    name = "Groww"
+    price = package["price"]
+    rsi = package["rsi"]
+    signal = package["signal"]
 
-    def connect(self):
-        return {
-            "connected": False,
-            "message": (
-                "Groww adapter placeholder. "
-                "Connect official broker API credentials "
-                "before enabling live execution."
-            ),
-        }
+    if signal == "BULLISH":
+        structure = (
+            "Price structure is currently "
+            "bullish under the deterministic "
+            "technical model."
+        )
 
+    elif signal == "BEARISH":
+        structure = (
+            "Price structure is currently "
+            "bearish under the deterministic "
+            "technical model."
+        )
 
-class SBISecuritiesBroker(BrokerAdapter):
-
-    name = "SBI Securities"
-
-    def connect(self):
-        return {
-            "connected": False,
-            "message": (
-                "SBI Securities adapter placeholder. "
-                "Official API/execution integration must be "
-                "implemented and verified before live trading."
-            ),
-        }
-
-
-# ============================================================
-# BACKTEST ENGINE
-# ============================================================
-
-def simple_backtest(df: pd.DataFrame) -> Dict:
-
-    if df.empty or len(df) < 50:
-
-        return {
-            "trades": 0,
-            "return_pct": 0,
-            "win_rate": 0,
-        }
-
-    data = calculate_indicators(df)
-
-    capital = 100000.0
-    starting_capital = capital
-
-    wins = 0
-    trades = 0
-
-    for i in range(1, len(data)):
-
-        row = data.iloc[i]
-
-        if pd.isna(row["EMA9"]) or pd.isna(row["EMA21"]):
-            continue
-
-        if row["EMA9"] > row["EMA21"] and row["RSI"] < 70:
-
-            entry = float(row["Close"])
-
-            exit_price = float(
-                data.iloc[min(i + 3, len(data) - 1)]["Close"]
-            )
-
-            pnl = (
-                (exit_price - entry)
-                / entry
-                * capital
-                * 0.01
-            )
-
-            capital += pnl
-            trades += 1
-
-            if pnl > 0:
-                wins += 1
+    else:
+        structure = (
+            "Price structure is mixed and "
+            "does not meet the deterministic "
+            "trend threshold."
+        )
 
     return {
-        "trades": trades,
-        "return_pct": (
-            (capital - starting_capital)
-            / starting_capital
-            * 100
-        ),
-        "win_rate": (
-            wins / trades * 100
-            if trades
-            else 0
-        ),
+        "summary": structure,
+        "price": price,
+        "rsi": rsi,
+        "signal": signal,
+        "themes": package["themes"],
+        "technical": {
+            "EMA9": package["ema9"],
+            "EMA21": package["ema21"],
+            "SMA20": package["sma20"],
+            "SMA50": package["sma50"],
+            "ATR": package["atr"],
+            "Volume Ratio": package["volume_ratio"],
+        }
     }
 
 
 # ============================================================
-# SIDEBAR
+# 18. AI DEEP RESEARCH
 # ============================================================
 
-st.sidebar.markdown(
-    "## 👽 OMNITRIX CONTROL"
-)
+def generate_ai_research(package):
 
-st.sidebar.caption(
-    "Phase 1: Indian Cash Equities / Intraday"
-)
+    symbol = package["symbol"]
 
-groq_api_key = st.sidebar.text_input(
-    "Groq API Key",
-    value=os.getenv("GROQ_API_KEY", ""),
-    type="password",
-)
+    model = st.session_state.ai_model
 
-# Current Groq model choices
-selected_model = st.sidebar.selectbox(
-    "AI Model",
-    [
-        "openai/gpt-oss-20b",
-        "openai/gpt-oss-120b",
-    ],
-    index=0,
-)
+    cache = load_research_cache()
 
-st.sidebar.divider()
-
-st.sidebar.subheader("🛡️ Risk Engine")
-
-max_daily_loss = st.sidebar.number_input(
-    "Maximum Daily Loss ₹",
-    min_value=100.0,
-    value=5000.0,
-    step=500.0,
-)
-
-max_position_value = st.sidebar.number_input(
-    "Maximum Position Value ₹",
-    min_value=1000.0,
-    value=100000.0,
-    step=5000.0,
-)
-
-max_trades_per_day = st.sidebar.number_input(
-    "Maximum Trades / Day",
-    min_value=1,
-    max_value=100,
-    value=10,
-)
-
-minimum_rr = st.sidebar.slider(
-    "Minimum Risk : Reward",
-    1.0,
-    5.0,
-    2.0,
-    0.25,
-)
-
-st.sidebar.divider()
-
-st.sidebar.subheader("🤖 Autonomous Mode")
-
-autonomous_mode = st.sidebar.toggle(
-    "Enable Autonomous PAPER Trading",
-    value=False,
-)
-
-if autonomous_mode:
-
-    st.sidebar.warning(
-        "Paper trading only. Live order execution is disabled."
+    key = research_cache_key(
+        symbol,
+        model
     )
 
-scan_size = st.sidebar.slider(
-    "Stocks to Scan",
-    min_value=10,
-    max_value=100,
-    value=50,
-    step=10,
-)
+    if key in cache:
 
-interval = st.sidebar.selectbox(
-    "Market Data Interval",
-    ["5m", "15m", "30m", "1h"],
-    index=1,
-)
+        log_event(
+            f"Research cache hit: {symbol}"
+        )
+
+        return cache[key]
+
+    fundamentals = json.dumps(
+        package["fundamentals"],
+        indent=2
+    )
+
+    news = json.dumps(
+        package["news"][:5],
+        indent=2
+    )
+
+    prompt = f"""
+Research the Indian listed company {symbol}.
+
+Use ONLY the supplied market information.
+Do not invent financial figures.
+
+TECHNICAL DATA:
+Price: {package['price']}
+1D Return: {package['change_1d']}%
+5D Return: {package['change_5d']}%
+RSI: {package['rsi']}
+ATR: {package['atr']}
+Volume Ratio: {package['volume_ratio']}
+EMA9: {package['ema9']}
+EMA21: {package['ema21']}
+SMA20: {package['sma20']}
+SMA50: {package['sma50']}
+Model Signal: {package['signal']}
+
+FUNDAMENTALS:
+{fundamentals}
+
+THEMES:
+{package['themes']}
+
+RECENT NEWS:
+{news}
+
+Return a concise institutional research note with:
+
+1. Executive Summary
+2. Technical Structure
+3. Fundamental Snapshot
+4. Catalysts
+5. Risks
+6. Sector/Theme Context
+7. What Would Change The Thesis
+8. Data Gaps / Uncertainty
+
+Do NOT provide guaranteed returns.
+Do NOT fabricate missing data.
+"""
+
+    result = call_ai(prompt)
+
+    if result:
+
+        cache[key] = result
+
+        save_research_cache(
+            cache
+        )
+
+        log_event(
+            f"AI research generated: {symbol}"
+        )
+
+    return result
 
 
 # ============================================================
-# HEADER
+# 19. PAPER TRADING
 # ============================================================
 
-st.markdown(
-    '<div class="omni-title">👽 OMNITRIX AI</div>',
-    unsafe_allow_html=True,
-)
+def execute_paper_order(
+    symbol,
+    side,
+    quantity,
+    price
+):
 
-st.markdown(
-    '<div class="omni-subtitle">'
-    "Autonomous Indian Equity Research & Paper-Trading Terminal"
-    "</div>",
-    unsafe_allow_html=True,
-)
+    timestamp = datetime.now().strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
 
-st.caption(
-    "NSE/BSE • Cash Equity • Intraday • AI Research • "
-    "Technical Scanner • News • IPO • Risk Engine"
-)
+    row = {
+        "timestamp": timestamp,
+        "symbol": symbol,
+        "side": side,
+        "quantity": quantity,
+        "price": price,
+        "value": quantity * price,
+        "mode": "PAPER",
+    }
+
+    df = pd.DataFrame([row])
+
+    if PAPER_ORDERS_FILE.exists():
+
+        old = pd.read_csv(
+            PAPER_ORDERS_FILE
+        )
+
+        df = pd.concat(
+            [old, df],
+            ignore_index=True
+        )
+
+    df.to_csv(
+        PAPER_ORDERS_FILE,
+        index=False
+    )
+
+    log_event(
+        f"PAPER ORDER {side} "
+        f"{quantity} {symbol} @ {price}"
+    )
+
+
+def load_orders():
+
+    if not PAPER_ORDERS_FILE.exists():
+        return pd.DataFrame()
+
+    try:
+        return pd.read_csv(
+            PAPER_ORDERS_FILE
+        )
+    except Exception:
+        return pd.DataFrame()
 
 
 # ============================================================
-# NAVIGATION
+# 20. HEADER
 # ============================================================
 
-pages = [
-    "🏠 Dashboard",
-    "🔎 Market Scanner",
-    "📈 Chart & Analysis",
-    "📰 News & Themes",
-    "🚀 IPO Center",
-    "⭐ Watchlist",
-    "💼 Portfolio",
-    "🤖 AI Agent",
-    "🛡️ Risk Management",
-    "🧪 Backtesting",
-    "📒 Trade Journal",
-    "⚙️ Settings",
-]
+def render_header():
 
-page = st.sidebar.radio(
-    "Terminal",
-    pages,
-)
+    status = market_status()
+
+    status_class = (
+        "status-open"
+        if status == "OPEN"
+        else "status-closed"
+    )
+
+    st.markdown(
+        f"""
+        <div class="terminal-header">
+
+        <div style="
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+        ">
+
+        <div>
+            <div class="main-title">
+                OMNITRIX TERMINAL
+            </div>
+
+            <div class="sub-title">
+                INDIAN EQUITIES • CASH MARKET • RESEARCH & PAPER EXECUTION
+            </div>
+        </div>
+
+        <div style="
+            display:flex;
+            gap:30px;
+            align-items:center;
+        ">
+
+        <div>
+            <span class="{status_class}">
+                ● {status}
+            </span>
+        </div>
+
+        <div>
+            <span style="color:#8d98a4;">
+                MODE
+            </span>
+            <br>
+            <b style="color:#ffffff;">
+                PAPER
+            </b>
+        </div>
+
+        <div>
+            <span style="color:#8d98a4;">
+                ASSET
+            </span>
+            <br>
+            <b style="color:#ffffff;">
+                NSE / BSE
+            </b>
+        </div>
+
+        </div>
+
+        </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 # ============================================================
-# DASHBOARD
+# 21. SIDEBAR NAVIGATION
 # ============================================================
 
-if page == "🏠 Dashboard":
+def navigation():
 
-    st.subheader("⚡ Market Command Center")
+    st.sidebar.markdown(
+        """
+        <div style="
+            font-size:19px;
+            font-weight:700;
+            margin-bottom:3px;
+        ">
+        OMNITRIX
+        </div>
+
+        <div style="
+            color:#7f8b96;
+            font-size:10px;
+            letter-spacing:1px;
+            margin-bottom:18px;
+        ">
+        INSTITUTIONAL TERMINAL
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    groups = {
+        "MARKETS": [
+            "Overview",
+            "Markets",
+            "Scanner",
+            "Stock Research",
+            "Watchlist",
+            "News",
+            "Themes",
+            "IPOs",
+        ],
+
+        "TRADING": [
+            "Portfolio",
+            "Positions",
+            "Orders",
+            "Paper Trading",
+            "Trade Journal",
+            "Risk",
+        ],
+
+        "AI": [
+            "AI Deployment",
+            "AI Research",
+            "Strategy Lab",
+            "Backtesting",
+        ],
+
+        "SYSTEM": [
+            "System Logs",
+            "Settings",
+        ],
+    }
+
+    for group, pages in groups.items():
+
+        st.sidebar.markdown(
+            f"""
+            <div style="
+                color:#66727e;
+                font-size:10px;
+                font-weight:700;
+                letter-spacing:1px;
+                margin-top:13px;
+                margin-bottom:5px;
+            ">
+            {group}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        for page in pages:
+
+            active = (
+                page ==
+                st.session_state.page
+            )
+
+            label = (
+                f"●  {page}"
+                if active
+                else page
+            )
+
+            if st.sidebar.button(
+                label,
+                key=f"nav_{page}",
+                use_container_width=True
+            ):
+
+                st.session_state.page = page
+
+                st.rerun()
+
+
+# ============================================================
+# 22. OVERVIEW
+# ============================================================
+
+def page_overview():
+
+    st.markdown(
+        '<div class="section">MARKET OVERVIEW</div>',
+        unsafe_allow_html=True
+    )
+
+    nifty = get_market_data(
+        "^NSEI",
+        period="5d"
+    )
+
+    banknifty = get_market_data(
+        "^NSEBANK",
+        period="5d"
+    )
+
+    cols = st.columns(4)
+
+    if not nifty.empty:
+
+        price = float(
+            nifty["Close"].iloc[-1]
+        )
+
+        change = (
+            nifty["Close"].pct_change().iloc[-1]
+            * 100
+        )
+
+        cols[0].metric(
+            "NIFTY 50",
+            f"₹{price:,.2f}",
+            f"{change:+.2f}%"
+        )
+
+    if not banknifty.empty:
+
+        price = float(
+            banknifty["Close"].iloc[-1]
+        )
+
+        change = (
+            banknifty["Close"].pct_change().iloc[-1]
+            * 100
+        )
+
+        cols[1].metric(
+            "BANK NIFTY",
+            f"₹{price:,.2f}",
+            f"{change:+.2f}%"
+        )
+
+    cols[2].metric(
+        "WATCHLIST",
+        len(st.session_state.watchlist)
+    )
+
+    cols[3].metric(
+        "AI STATUS",
+        "ACTIVE"
+        if st.session_state.ai_enabled
+        else "STANDBY"
+    )
+
+    st.markdown(
+        '<div class="section">QUICK ACCESS</div>',
+        unsafe_allow_html=True
+    )
 
     c1, c2, c3, c4 = st.columns(4)
 
-    c1.metric(
-        "Scanner Universe",
-        f"{scan_size} stocks",
+    if c1.button(
+        "OPEN SCANNER",
+        use_container_width=True
+    ):
+        st.session_state.page = "Scanner"
+        st.rerun()
+
+    if c2.button(
+        "STOCK RESEARCH",
+        use_container_width=True
+    ):
+        st.session_state.page = "Stock Research"
+        st.rerun()
+
+    if c3.button(
+        "AI DEPLOYMENT",
+        use_container_width=True
+    ):
+        st.session_state.page = "AI Deployment"
+        st.rerun()
+
+    if c4.button(
+        "PAPER TRADING",
+        use_container_width=True
+    ):
+        st.session_state.page = "Paper Trading"
+        st.rerun()
+
+    st.markdown(
+        '<div class="section">WATCHLIST</div>',
+        unsafe_allow_html=True
     )
 
-    c2.metric(
-        "Trading Mode",
-        "PAPER" if autonomous_mode else "MANUAL",
-    )
+    rows = []
 
-    c3.metric(
-        "Instrument Type",
-        "CASH EQUITY",
-    )
+    for symbol in st.session_state.watchlist:
 
-    c4.metric(
-        "F&O",
-        "DISABLED",
-    )
-
-    st.divider()
-
-    search = st.text_input(
-        "🔎 Search any Indian stock",
-        placeholder="Try: tata, tata motor, reliance, sbi, infosys...",
-    )
-
-    if search:
-
-        matches = search_instruments(
-            search,
-            limit=8,
+        df = get_market_data(
+            symbol,
+            period="5d"
         )
 
+        if df.empty:
+            continue
+
+        close = df["Close"]
+
+        rows.append({
+            "Symbol": symbol,
+            "Price": round(
+                float(close.iloc[-1]),
+                2
+            ),
+            "1D %": round(
+                float(
+                    close.pct_change().iloc[-1]
+                    * 100
+                ),
+                2
+            )
+        })
+
+    if rows:
         st.dataframe(
-            matches[
-                [
-                    "symbol",
-                    "name",
-                    "yf_symbol",
-                    "bse_code",
-                    "sector",
-                ]
-            ],
+            pd.DataFrame(rows),
             use_container_width=True,
-            hide_index=True,
+            hide_index=True
         )
 
-    st.info(
-        "The search engine is local. Users do not need to enter "
-        ".NS or .BO suffixes."
+
+# ============================================================
+# 23. MARKETS
+# ============================================================
+
+def page_markets():
+
+    st.markdown(
+        '<div class="section">MARKET MONITOR</div>',
+        unsafe_allow_html=True
     )
 
+    indices = {
+        "NIFTY 50": "^NSEI",
+        "BANK NIFTY": "^NSEBANK",
+        "NIFTY IT": "^CNXIT",
+        "NIFTY AUTO": "^CNXAUTO",
+        "NIFTY PHARMA": "^CNXPHARMA",
+    }
+
+    rows = []
+
+    for name, ticker in indices.items():
+
+        df = get_market_data(
+            ticker,
+            period="5d"
+        )
+
+        if df.empty:
+            continue
+
+        close = df["Close"]
+
+        rows.append({
+            "Index": name,
+            "Last": round(
+                float(close.iloc[-1]),
+                2
+            ),
+            "1D %": round(
+                float(
+                    close.pct_change().iloc[-1]
+                    * 100
+                ),
+                2
+            )
+        })
+
+    if rows:
+        st.dataframe(
+            pd.DataFrame(rows),
+            use_container_width=True,
+            hide_index=True
+        )
+
 
 # ============================================================
-# MARKET SCANNER
+# 24. SCANNER
 # ============================================================
 
-elif page == "🔎 Market Scanner":
+def page_scanner():
 
-    st.subheader(
-        f"🔎 Market Scanner — {scan_size} Stocks"
+    st.markdown(
+        '<div class="section">EQUITY SCANNER</div>',
+        unsafe_allow_html=True
     )
 
     st.caption(
-        "The system analyzes many instruments programmatically. "
-        "It does not need to open 100 separate visual chart windows."
+        "Deterministic screening runs first. "
+        "AI is only applied after candidates are shortlisted."
     )
 
-    universe = INSTRUMENT_DF.head(scan_size)
+    c1, c2, c3 = st.columns(3)
+
+    universe_size = c1.selectbox(
+        "Universe",
+        [50, 80, len(STOCKS)],
+        index=1
+    )
+
+    min_score = c2.slider(
+        "Minimum Technical Score",
+        0,
+        100,
+        40,
+        10
+    )
+
+    ai_shortlist = c3.checkbox(
+        "AI shortlist after scan",
+        value=False
+    )
 
     if st.button(
-        f"🚀 Scan {scan_size} Stocks",
-        type="primary",
+        "RUN MARKET SCAN",
+        use_container_width=True
     ):
 
         with st.spinner(
-            "Scanning market data..."
+            "Scanning equity universe..."
         ):
 
-            scan_results = scan_market(
-                universe
+            result = run_scanner(
+                universe_size
             )
 
-        st.session_state["scan_results"] = scan_results
+        result = result[
+            result["Score"] >= min_score
+        ]
 
-    scan_results = st.session_state.get(
-        "scan_results",
-        pd.DataFrame(),
+        st.session_state.scanner_result = result
+
+        log_event(
+            f"Scanner completed: "
+            f"{len(result)} candidates"
+        )
+
+    result = st.session_state.scanner_result
+
+    if result is None:
+        st.info(
+            "Run the scanner to generate candidates."
+        )
+        return
+
+    st.dataframe(
+        result,
+        use_container_width=True,
+        hide_index=True
     )
 
-    if not scan_results.empty:
+    if ai_shortlist and not result.empty:
 
-        st.dataframe(
-            scan_results.sort_values(
-                "score",
-                ascending=False,
-            ),
-            use_container_width=True,
-            hide_index=True,
-        )
+        if not st.session_state.ai_enabled:
 
-        st.subheader(
-            "🔥 Highest Technical Scores"
-        )
-
-        top = scan_results[
-            scan_results["signal"] != "NO DATA"
-        ].sort_values(
-            "score",
-            ascending=False,
-        ).head(10)
-
-        st.dataframe(
-            top,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-
-# ============================================================
-# CHART & ANALYSIS
-# ============================================================
-
-elif page == "📈 Chart & Analysis":
-
-    st.subheader("📈 Chart & Technical Analysis")
-
-    search = st.text_input(
-        "Search stock",
-        value="tata motor",
-    )
-
-    matches = search_instruments(
-        search,
-        limit=5,
-    )
-
-    if not matches.empty:
-
-        selected_name = st.selectbox(
-            "Select instrument",
-            matches["name"].tolist(),
-        )
-
-        selected = matches[
-            matches["name"] == selected_name
-        ].iloc[0]
-
-        hist = get_history(
-            selected["yf_symbol"],
-            period="1mo",
-            interval=interval,
-        )
-
-        if not hist.empty:
-
-            data = calculate_indicators(hist)
-
-            latest = data.iloc[-1]
-
-            c1, c2, c3, c4 = st.columns(4)
-
-            c1.metric(
-                "Price",
-                f"₹{latest['Close']:,.2f}",
-            )
-
-            c2.metric(
-                "RSI",
-                f"{latest['RSI']:.2f}",
-            )
-
-            c3.metric(
-                "Volume Ratio",
-                f"{latest['VOL_RATIO']:.2f}x",
-            )
-
-            c4.metric(
-                "Trend",
-                (
-                    "BULLISH"
-                    if latest["EMA9"] > latest["EMA21"]
-                    else "BEARISH"
-                ),
-            )
-
-            st.line_chart(
-                data[
-                    [
-                        "Close",
-                        "EMA9",
-                        "EMA21",
-                        "SMA20",
-                    ]
-                ]
-            )
-
-            st.subheader(
-                "Technical Data"
-            )
-
-            st.dataframe(
-                data.tail(50),
-                use_container_width=True,
+            st.warning(
+                "AI is disabled. Enable it from "
+                "AI Deployment."
             )
 
         else:
 
-            st.error(
-                "No market data returned for this instrument."
-            )
+            candidates = result.head(10)
 
+            prompt = f"""
+Review these technically shortlisted Indian
+equities.
 
-# ============================================================
-# NEWS & THEMES
-# ============================================================
+Do not invent data.
 
-elif page == "📰 News & Themes":
-
-    st.subheader(
-        "📰 Indian Market News + Theme Detection"
-    )
-
-    query = st.text_input(
-        "News search",
-        value="Indian stock market AI robotics IPO",
-    )
-
-    if st.button(
-        "🔄 Scan News",
-        type="primary",
-    ):
-
-        news = get_news(
-            query,
-            max_results=20,
-        )
-
-        st.session_state["news"] = news
-
-    news = st.session_state.get(
-        "news",
-        [],
-    )
-
-    if news:
-
-        for item in news:
-
-            title = item.get(
-                "title",
-                "No title",
-            )
-
-            description = item.get(
-                "description",
-                "",
-            )
-
-            publisher = item.get(
-                "publisher",
-                "",
-            )
-
-            if isinstance(
-                publisher,
-                dict,
-            ):
-                publisher = publisher.get(
-                    "title",
-                    "",
-                )
-
-            url = item.get(
-                "url",
-                "#",
-            )
-
-            st.markdown(
-                f"### [{title}]({url})"
-            )
-
-            st.caption(
-                f"{publisher} — {description}"
-            )
-
-        st.subheader(
-            "🌐 Detected Market Themes"
-        )
-
-        themes = detect_themes(
-            news
-        )
-
-        st.dataframe(
-            themes,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-    else:
-
-        st.info(
-            "Press Scan News to collect recent market news."
-        )
-
-
-# ============================================================
-# IPO CENTER
-# ============================================================
-
-elif page == "🚀 IPO Center":
-
-    st.subheader(
-        "🚀 IPO Intelligence Center"
-    )
-
-    st.info(
-        "IPO data will be connected to verified exchange/official "
-        "sources in the next module. News discovery is available now."
-    )
-
-    ipo_news = get_news(
-        "India IPO NSE BSE IPO subscription listing",
-        max_results=15,
-    )
-
-    if ipo_news:
-
-        for item in ipo_news:
-
-            st.markdown(
-                f"**{item.get('title', 'IPO News')}**"
-            )
-
-            st.caption(
-                item.get(
-                    "description",
-                    "",
-                )
-            )
-
-    st.divider()
-
-    st.subheader(
-        "IPO Analysis Framework"
-    )
-
-    st.write(
-        """
-        The IPO engine will evaluate:
-
-        • Issue size
-        • Price band
-        • Subscription
-        • QIB/NII/retail participation
-        • GMP as a separate non-official indicator
-        • Revenue and profit growth
-        • Valuation
-        • Debt
-        • Promoter/shareholder information
-        • Sector/theme
-        • Listing-day liquidity
-        • Market conditions
-        • Post-listing momentum
-        """
-    )
-
-
-# ============================================================
-# WATCHLIST
-# ============================================================
-
-elif page == "⭐ Watchlist":
-
-    st.subheader("⭐ Watchlist")
-
-    default_watchlist = [
-        "RELIANCE",
-        "TCS",
-        "TATAMOTORS",
-        "HDFCBANK",
-        "ICICIBANK",
-        "SBIN",
-        "INFY",
-    ]
-
-    watchlist = st.multiselect(
-        "Select stocks",
-        INSTRUMENT_DF["symbol"].tolist(),
-        default=default_watchlist,
-    )
-
-    if watchlist:
-
-        selected_df = INSTRUMENT_DF[
-            INSTRUMENT_DF["symbol"].isin(
-                watchlist
-            )
-        ]
-
-        results = scan_market(
-            selected_df
-        )
-
-        st.dataframe(
-            results,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-
-# ============================================================
-# PORTFOLIO
-# ============================================================
-
-elif page == "💼 Portfolio":
-
-    st.subheader(
-        "💼 Portfolio & Positions"
-    )
-
-    paper_trades = load_paper_trades()
-
-    if paper_trades.empty:
-
-        st.info(
-            "No paper trades yet."
-        )
-
-    else:
-
-        st.dataframe(
-            paper_trades,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-
-# ============================================================
-# AI AGENT
-# ============================================================
-
-elif page == "🤖 AI Agent":
-
-    st.subheader(
-        "🤖 Omnitrix AI Research Agent"
-    )
-
-    search = st.text_input(
-        "Stock to analyze",
-        value="tata motor",
-    )
-
-    matches = search_instruments(
-        search,
-        limit=5,
-    )
-
-    if not matches.empty:
-
-        selected_name = st.selectbox(
-            "Select stock",
-            matches["name"].tolist(),
-        )
-
-        selected = matches[
-            matches["name"] == selected_name
-        ].iloc[0]
-
-        if st.button(
-            "🧠 RUN AI RESEARCH",
-            type="primary",
-        ):
-
-            if not groq_api_key:
-
-                st.error(
-                    "Enter your Groq API key first."
-                )
-
-            else:
-
-                hist = get_history(
-                    selected["yf_symbol"],
-                    period="5d",
-                    interval="15m",
-                )
-
-                indicators = calculate_indicators(
-                    hist
-                )
-
-                if indicators.empty:
-
-                    st.error(
-                        "Market data unavailable."
-                    )
-
-                else:
-
-                    latest = indicators.iloc[-1]
-
-                    news = get_news(
-                        f"{selected['name']} India stock",
-                        max_results=8,
-                    )
-
-                    news_text = news_to_text(
-                        news
-                    )
-
-                    prompt = f"""
-You are the research intelligence layer of a
-cash-equity intraday trading system.
-
-IMPORTANT:
-You are NOT the execution layer.
-
-Stock:
-{selected['name']}
-
-Symbol:
-{selected['symbol']}
-
-Latest price:
-{latest['Close']}
-
-RSI:
-{latest['RSI']}
-
-EMA9:
-{latest['EMA9']}
-
-EMA21:
-{latest['EMA21']}
-
-Volume ratio:
-{latest['VOL_RATIO']}
-
-Recent news:
-{news_text}
+Candidates:
+{candidates.to_json(orient="records")}
 
 Return:
 
-1. MARKET REGIME
-2. TECHNICAL STRUCTURE
-3. NEWS/SENTIMENT
-4. POSSIBLE SETUP
-5. INVALIDATION
-6. RISK FACTORS
-7. CONFIDENCE 0-100
-8. ACTION:
-   WATCH
-   BUY_CANDIDATE
-   SELL_CANDIDATE
-   NO_TRADE
+SYMBOL
+RESEARCH PRIORITY
+REASON
+RISK FLAG
 
-Do not invent data.
-Do not guarantee profit.
-Do not directly place an order.
+Do not issue automatic orders.
 """
 
-                    with st.spinner(
-                        "AI analyzing..."
-                    ):
+            ai_result = call_ai(prompt)
 
-                        result = ask_ai(
-                            groq_api_key,
-                            selected_model,
-                            """
-You are a disciplined financial
-research assistant. Separate facts,
-signals and uncertainty. Never claim
-certainty about market direction.
-""",
-                            prompt,
-                        )
+            st.markdown(
+                '<div class="section">AI SHORTLIST</div>',
+                unsafe_allow_html=True
+            )
 
-                    st.markdown(
-                        "### 🧠 AI Research Report"
-                    )
-
-                    st.write(result)
+            st.write(ai_result)
 
 
 # ============================================================
-# RISK MANAGEMENT
+# 25. STOCK RESEARCH
 # ============================================================
 
-elif page == "🛡️ Risk Management":
+def page_stock_research():
 
-    st.subheader(
-        "🛡️ Deterministic Risk Engine"
+    st.markdown(
+        '<div class="section">STOCK RESEARCH WORKSPACE</div>',
+        unsafe_allow_html=True
     )
 
-    risk = RiskEngine(
-        max_daily_loss=max_daily_loss,
-        max_position_value=max_position_value,
-        max_trades_per_day=max_trades_per_day,
-        minimum_rr=minimum_rr,
+    symbols = list(STOCKS.keys())
+
+    selected = st.selectbox(
+        "Search Indian Equity",
+        symbols,
+        index=symbols.index(
+            st.session_state.selected_stock
+        )
+        if st.session_state.selected_stock
+        in symbols
+        else 0
     )
 
-    entry = st.number_input(
-        "Entry Price",
-        min_value=0.01,
-        value=100.0,
-    )
+    st.session_state.selected_stock = selected
 
-    stop = st.number_input(
-        "Stop Loss",
-        min_value=0.01,
-        value=98.0,
-    )
+    c1, c2, c3 = st.columns(3)
 
-    target = st.number_input(
-        "Target",
-        min_value=0.01,
-        value=104.0,
-    )
-
-    quantity = st.number_input(
-        "Quantity",
-        min_value=1,
-        value=100,
-    )
-
-    if st.button(
-        "Validate Trade"
+    if c1.button(
+        "LOAD RESEARCH",
+        use_container_width=True
     ):
 
-        valid, reasons = risk.validate_trade(
-            action="BUY",
-            entry=entry,
-            stop_loss=stop,
-            target=target,
-            quantity=quantity,
-            current_daily_pnl=0,
-            trade_count=0,
+        with st.spinner(
+            "Loading market data..."
+        ):
+
+            package = build_research_package(
+                selected
+            )
+
+        st.session_state.research_result = package
+
+        log_event(
+            f"Research loaded: {selected}"
         )
 
-        if valid:
+    if c2.button(
+        "GENERATE AI DEEP RESEARCH",
+        use_container_width=True
+    ):
 
-            st.success(
-                "TRADE PASSED RISK ENGINE"
+        if not st.session_state.ai_enabled:
+
+            st.warning(
+                "Enable AI Deployment first."
             )
 
         else:
 
-            st.error(
-                "TRADE REJECTED"
+            package = (
+                st.session_state.research_result
             )
 
-            for reason in reasons:
-                st.write(
-                    f"❌ {reason}"
+            if package is None:
+
+                package = build_research_package(
+                    selected
                 )
 
+                st.session_state.research_result = package
 
-# ============================================================
-# BACKTESTING
-# ============================================================
+            with st.spinner(
+                "Generating research..."
+            ):
 
-elif page == "🧪 Backtesting":
+                result = generate_ai_research(
+                    package
+                )
 
-    st.subheader(
-        "🧪 Strategy Backtesting"
-    )
+            st.session_state.ai_research = result
 
-    search = st.text_input(
-        "Backtest stock",
-        value="reliance",
-    )
+    if c3.button(
+        "ADD TO WATCHLIST",
+        use_container_width=True
+    ):
 
-    matches = search_instruments(
-        search,
-        limit=5,
-    )
+        if selected not in st.session_state.watchlist:
 
-    if not matches.empty:
-
-        selected_name = st.selectbox(
-            "Instrument",
-            matches["name"].tolist(),
-        )
-
-        selected = matches[
-            matches["name"] == selected_name
-        ].iloc[0]
-
-        if st.button(
-            "Run Backtest",
-            type="primary",
-        ):
-
-            hist = get_history(
-                selected["yf_symbol"],
-                period="1mo",
-                interval="15m",
+            st.session_state.watchlist.append(
+                selected
             )
 
-            result = simple_backtest(
-                hist
+            save_watchlist()
+
+            st.success(
+                f"{selected} added."
             )
 
-            c1, c2, c3 = st.columns(3)
+    package = st.session_state.research_result
 
-            c1.metric(
-                "Trades",
-                result["trades"],
-            )
-
-            c2.metric(
-                "Return",
-                f"{result['return_pct']:.2f}%",
-            )
-
-            c3.metric(
-                "Win Rate",
-                f"{result['win_rate']:.2f}%",
-            )
-
-            st.warning(
-                "This is a basic development backtest. "
-                "It is not yet suitable for validating a live strategy."
-            )
-
-
-# ============================================================
-# TRADE JOURNAL
-# ============================================================
-
-elif page == "📒 Trade Journal":
-
-    st.subheader(
-        "📒 Trade Journal"
-    )
-
-    trades = load_paper_trades()
-
-    if trades.empty:
+    if package is None:
 
         st.info(
-            "No trades recorded."
+            "Load a stock to open the research workspace."
+        )
+
+        return
+
+    price_cols = st.columns(5)
+
+    price_cols[0].metric(
+        "PRICE",
+        f"₹{package['price']:,.2f}",
+        f"{package['change_1d']:+.2f}%"
+    )
+
+    price_cols[1].metric(
+        "5D RETURN",
+        f"{package['change_5d']:+.2f}%"
+    )
+
+    price_cols[2].metric(
+        "RSI",
+        f"{package['rsi']:.1f}"
+    )
+
+    price_cols[3].metric(
+        "VOLUME RATIO",
+        f"{package['volume_ratio']:.2f}x"
+    )
+
+    price_cols[4].metric(
+        "MODEL SIGNAL",
+        package["signal"]
+    )
+
+    df = get_market_data(
+        selected,
+        period="1y"
+    )
+
+    if not df.empty:
+
+        st.markdown(
+            '<div class="section">PRICE STRUCTURE</div>',
+            unsafe_allow_html=True
+        )
+
+        st.line_chart(
+            df["Close"],
+            height=330
+        )
+
+    left, right = st.columns(2)
+
+    with left:
+
+        st.markdown(
+            '<div class="section">TECHNICAL STRUCTURE</div>',
+            unsafe_allow_html=True
+        )
+
+        technical = pd.DataFrame({
+            "Metric": [
+                "EMA 9",
+                "EMA 21",
+                "SMA 20",
+                "SMA 50",
+                "ATR",
+                "RSI",
+                "Volume Ratio"
+            ],
+
+            "Value": [
+                package["ema9"],
+                package["ema21"],
+                package["sma20"],
+                package["sma50"],
+                package["atr"],
+                package["rsi"],
+                package["volume_ratio"]
+            ]
+        })
+
+        st.dataframe(
+            technical,
+            use_container_width=True,
+            hide_index=True
+        )
+
+    with right:
+
+        st.markdown(
+            '<div class="section">FUNDAMENTALS</div>',
+            unsafe_allow_html=True
+        )
+
+        fundamentals = package["fundamentals"]
+
+        fundamental_rows = []
+
+        for key, value in fundamentals.items():
+
+            if value is None:
+                continue
+
+            if isinstance(value, float):
+                value = round(
+                    value,
+                    3
+                )
+
+            fundamental_rows.append({
+                "Metric": key,
+                "Value": value
+            })
+
+        if fundamental_rows:
+
+            st.dataframe(
+                pd.DataFrame(
+                    fundamental_rows
+                ),
+                use_container_width=True,
+                hide_index=True
+            )
+
+    st.markdown(
+        '<div class="section">THEMES</div>',
+        unsafe_allow_html=True
+    )
+
+    if package["themes"]:
+
+        st.write(
+            " • ".join(
+                package["themes"]
+            )
+        )
+
+    else:
+
+        st.caption(
+            "No tracked themes detected."
+        )
+
+    st.markdown(
+        '<div class="section">RECENT NEWS</div>',
+        unsafe_allow_html=True
+    )
+
+    for article in package["news"]:
+
+        st.markdown(
+            f"**{article['title']}**"
+        )
+
+        st.caption(
+            f"{article['publisher']} — "
+            f"{article['description']}"
+        )
+
+    quick = generate_quick_research(
+        package
+    )
+
+    st.markdown(
+        '<div class="section">QUICK RESEARCH</div>',
+        unsafe_allow_html=True
+    )
+
+    st.write(
+        quick["summary"]
+    )
+
+    if "ai_research" in st.session_state:
+
+        st.markdown(
+            '<div class="section">AI DEEP RESEARCH</div>',
+            unsafe_allow_html=True
+        )
+
+        st.markdown(
+            st.session_state.ai_research
+        )
+
+
+# ============================================================
+# 26. WATCHLIST
+# ============================================================
+
+def page_watchlist():
+
+    st.markdown(
+        '<div class="section">WATCHLIST</div>',
+        unsafe_allow_html=True
+    )
+
+    symbol = st.selectbox(
+        "Add security",
+        list(STOCKS.keys())
+    )
+
+    if st.button(
+        "ADD SECURITY",
+        use_container_width=True
+    ):
+
+        if symbol not in st.session_state.watchlist:
+
+            st.session_state.watchlist.append(
+                symbol
+            )
+
+            save_watchlist()
+
+            st.success(
+                f"{symbol} added."
+            )
+
+    rows = []
+
+    for symbol in st.session_state.watchlist:
+
+        df = get_market_data(
+            symbol,
+            period="5d"
+        )
+
+        if df.empty:
+            continue
+
+        close = df["Close"]
+
+        rows.append({
+            "Symbol": symbol,
+            "Price": round(
+                float(close.iloc[-1]),
+                2
+            ),
+            "1D %": round(
+                float(
+                    close.pct_change().iloc[-1]
+                    * 100
+                ),
+                2
+            )
+        })
+
+    if rows:
+
+        st.dataframe(
+            pd.DataFrame(rows),
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+# ============================================================
+# 27. NEWS
+# ============================================================
+
+def page_news():
+
+    st.markdown(
+        '<div class="section">MARKET NEWS MONITOR</div>',
+        unsafe_allow_html=True
+    )
+
+    symbol = st.selectbox(
+        "Security",
+        list(STOCKS.keys())
+    )
+
+    news = get_news(symbol)
+
+    if not news:
+
+        st.info(
+            "No news available."
+        )
+
+        return
+
+    for item in news:
+
+        title = item.get(
+            "title",
+            "Untitled"
+        )
+
+        publisher = item.get(
+            "publisher",
+            {}
+        )
+
+        if isinstance(
+            publisher,
+            dict
+        ):
+
+            publisher = publisher.get(
+                "title",
+                "Unknown"
+            )
+
+        st.markdown(
+            f"**{title}**"
+        )
+
+        st.caption(
+            f"{publisher} | "
+            f"{item.get('description', '')}"
+        )
+
+
+# ============================================================
+# 28. THEMES
+# ============================================================
+
+def page_themes():
+
+    st.markdown(
+        '<div class="section">MARKET THEMES</div>',
+        unsafe_allow_html=True
+    )
+
+    theme_rows = []
+
+    for theme, keywords in THEMES.items():
+
+        theme_rows.append({
+            "Theme": theme,
+            "Tracked Keywords": ", ".join(
+                keywords
+            ),
+            "Status": "MONITOR"
+        })
+
+    st.dataframe(
+        pd.DataFrame(theme_rows),
+        use_container_width=True,
+        hide_index=True
+    )
+
+
+# ============================================================
+# 29. IPO CENTER
+# ============================================================
+
+def page_ipos():
+
+    st.markdown(
+        '<div class="section">IPO CENTER</div>',
+        unsafe_allow_html=True
+    )
+
+    st.info(
+        "IPO intelligence module is isolated from "
+        "the live trading engine. A verified IPO data "
+        "provider can be connected here in the next phase."
+    )
+
+    st.write(
+        "Planned fields:"
+    )
+
+    st.write(
+        "- IPO name\n"
+        "- Issue price\n"
+        "- Subscription data\n"
+        "- GMP / unofficial data where available\n"
+        "- Anchor investors\n"
+        "- Financial metrics\n"
+        "- Sector\n"
+        "- Listing date\n"
+        "- AI research"
+    )
+
+
+# ============================================================
+# 30. PAPER TRADING
+# ============================================================
+
+def page_paper_trading():
+
+    st.markdown(
+        '<div class="section">PAPER EXECUTION</div>',
+        unsafe_allow_html=True
+    )
+
+    st.warning(
+        "PAPER MODE ONLY. No broker order is being sent."
+    )
+
+    c1, c2, c3 = st.columns(3)
+
+    symbol = c1.selectbox(
+        "Security",
+        list(STOCKS.keys())
+    )
+
+    side = c2.selectbox(
+        "Side",
+        ["BUY", "SELL"]
+    )
+
+    quantity = c3.number_input(
+        "Quantity",
+        min_value=1,
+        value=1
+    )
+
+    df = get_market_data(
+        symbol,
+        period="5d"
+    )
+
+    if df.empty:
+        return
+
+    price = float(
+        df["Close"].iloc[-1]
+    )
+
+    st.metric(
+        "Reference Price",
+        f"₹{price:,.2f}"
+    )
+
+    if st.button(
+        "SUBMIT PAPER ORDER",
+        use_container_width=True
+    ):
+
+        execute_paper_order(
+            symbol,
+            side,
+            int(quantity),
+            price
+        )
+
+        st.success(
+            f"PAPER {side} order recorded."
+        )
+
+    orders = load_orders()
+
+    if not orders.empty:
+
+        st.markdown(
+            '<div class="section">ORDER HISTORY</div>',
+            unsafe_allow_html=True
+        )
+
+        st.dataframe(
+            orders.tail(50),
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+# ============================================================
+# 31. ORDERS
+# ============================================================
+
+def page_orders():
+
+    st.markdown(
+        '<div class="section">ORDER MANAGEMENT</div>',
+        unsafe_allow_html=True
+    )
+
+    orders = load_orders()
+
+    if orders.empty:
+
+        st.info(
+            "No paper orders."
         )
 
     else:
 
         st.dataframe(
-            trades,
+            orders,
             use_container_width=True,
-            hide_index=True,
+            hide_index=True
         )
 
-        total_pnl = (
-            pd.to_numeric(
-                trades["pnl"],
-                errors="coerce",
+
+# ============================================================
+# 32. POSITIONS
+# ============================================================
+
+def page_positions():
+
+    st.markdown(
+        '<div class="section">POSITIONS</div>',
+        unsafe_allow_html=True
+    )
+
+    orders = load_orders()
+
+    if orders.empty:
+
+        st.info(
+            "No paper positions."
+        )
+
+        return
+
+    positions = {}
+
+    for _, row in orders.iterrows():
+
+        symbol = row["symbol"]
+
+        if symbol not in positions:
+            positions[symbol] = 0
+
+        if row["side"] == "BUY":
+            positions[symbol] += row["quantity"]
+        else:
+            positions[symbol] -= row["quantity"]
+
+    rows = []
+
+    for symbol, quantity in positions.items():
+
+        if quantity == 0:
+            continue
+
+        df = get_market_data(
+            symbol,
+            period="5d"
+        )
+
+        if df.empty:
+            continue
+
+        price = float(
+            df["Close"].iloc[-1]
+        )
+
+        rows.append({
+            "Symbol": symbol,
+            "Quantity": quantity,
+            "Last Price": round(
+                price,
+                2
             )
-            .fillna(0)
-            .sum()
-        )
+        })
 
-        st.metric(
-            "Recorded P&L",
-            f"₹{total_pnl:,.2f}",
+    if rows:
+
+        st.dataframe(
+            pd.DataFrame(rows),
+            use_container_width=True,
+            hide_index=True
         )
 
 
 # ============================================================
-# SETTINGS
+# 33. PORTFOLIO
 # ============================================================
 
-elif page == "⚙️ Settings":
+def page_portfolio():
 
-    st.subheader(
-        "⚙️ System Settings"
+    st.markdown(
+        '<div class="section">PORTFOLIO</div>',
+        unsafe_allow_html=True
     )
 
-    st.write(
-        """
-        ### Trading scope
-
-        ✅ Indian equities  
-        ✅ NSE/BSE research  
-        ✅ Intraday/day trading  
-        ✅ Paper trading  
-        ❌ Futures  
-        ❌ Options  
-        ❌ Unrestricted AI order execution  
-
-        ### Planned broker adapters
-
-        • Groww  
-        • SBI Securities  
-
-        ### Planned next modules
-
-        • Complete NSE/BSE instrument master  
-        • Real-time broker market feed  
-        • WebSocket data  
-        • Real-time order book  
-        • Advanced candlestick recognition  
-        • Support/resistance engine  
-        • Breakout detector  
-        • Pattern image analysis  
-        • News credibility scoring  
-        • Theme momentum engine  
-        • IPO official-data connector  
-        • Advanced backtesting  
-        • Portfolio analytics  
-        • Broker execution gateway  
-        • Authentication and licensing
-        """
+    st.metric(
+        "Execution Mode",
+        "PAPER"
     )
 
-    st.subheader(
-        "Broker Connectivity"
+    st.metric(
+        "Live Broker Connection",
+        "DISABLED"
     )
 
-    groww = GrowwBroker()
-    sbi = SBISecuritiesBroker()
+    st.info(
+        "Broker connectivity will be introduced only "
+        "after the research, risk and paper-execution "
+        "layers are stable."
+    )
+
+
+# ============================================================
+# 34. RISK
+# ============================================================
+
+def page_risk():
+
+    st.markdown(
+        '<div class="section">RISK CONTROL CENTER</div>',
+        unsafe_allow_html=True
+    )
+
+    c1, c2, c3 = st.columns(3)
+
+    max_daily_loss = c1.number_input(
+        "Maximum Daily Loss (₹)",
+        min_value=1000,
+        value=10000
+    )
+
+    max_position_size = c2.number_input(
+        "Maximum Position Value (₹)",
+        min_value=1000,
+        value=100000
+    )
+
+    max_trades = c3.number_input(
+        "Maximum Trades / Day",
+        min_value=1,
+        value=10
+    )
+
+    st.markdown(
+        '<div class="section">HARD RULES</div>',
+        unsafe_allow_html=True
+    )
+
+    rules = [
+        "Cash equities only",
+        "No F&O",
+        "No order without risk validation",
+        "AI cannot directly place orders",
+        "Paper trading before live trading",
+        "Maximum daily loss stops execution",
+        "Position size must pass risk engine",
+        "System must record every order",
+    ]
+
+    for rule in rules:
+        st.write(
+            f"• {rule}"
+        )
+
+
+# ============================================================
+# 35. AI DEPLOYMENT CENTER
+# ============================================================
+
+def page_ai_deployment():
+
+    st.markdown(
+        '<div class="section">AI DEPLOYMENT CENTER</div>',
+        unsafe_allow_html=True
+    )
+
+    st.caption(
+        "AI Deployment controls the model layer. "
+        "It does not grant direct order authority."
+    )
+
+    provider = st.selectbox(
+        "AI Provider",
+        ["Local", "Groq"],
+        index=(
+            0
+            if st.session_state.ai_provider == "Local"
+            else 1
+        )
+    )
+
+    st.session_state.ai_provider = provider
+
+    if provider == "Local":
+
+        endpoint = st.text_input(
+            "OpenAI-Compatible Local Endpoint",
+            value=st.session_state.ai_endpoint
+        )
+
+        model = st.text_input(
+            "Local Model Name",
+            value=st.session_state.ai_model
+        )
+
+        st.session_state.ai_endpoint = endpoint
+        st.session_state.ai_model = model
+
+        st.info(
+            "Use your local model server's OpenAI-compatible "
+            "endpoint. The default shown is suitable for "
+            "an Ollama-style local endpoint."
+        )
+
+    else:
+
+        api_key = st.text_input(
+            "Groq API Key",
+            value=os.getenv(
+                "GROQ_API_KEY",
+                ""
+            ),
+            type="password"
+        )
+
+        model = st.text_input(
+            "Groq Model",
+            value=(
+                st.session_state.ai_model
+                or "openai/gpt-oss-20b"
+            )
+        )
+
+        st.session_state.groq_api_key = api_key
+        st.session_state.ai_model = model
+
+    st.markdown(
+        '<div class="section">MODEL PARAMETERS</div>',
+        unsafe_allow_html=True
+    )
 
     c1, c2 = st.columns(2)
 
-    with c1:
+    temperature = c1.slider(
+        "Temperature",
+        0.0,
+        1.0,
+        float(
+            st.session_state.ai_temperature
+        ),
+        0.05
+    )
+
+    max_tokens = c2.number_input(
+        "Maximum Output Tokens",
+        min_value=200,
+        max_value=5000,
+        value=int(
+            st.session_state.ai_max_tokens
+        )
+    )
+
+    st.session_state.ai_temperature = temperature
+    st.session_state.ai_max_tokens = max_tokens
+
+    st.markdown(
+        '<div class="section">AI SERVICES</div>',
+        unsafe_allow_html=True
+    )
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    research_ai = c1.checkbox(
+        "Research AI",
+        value=True
+    )
+
+    scanner_ai = c2.checkbox(
+        "Scanner AI",
+        value=False
+    )
+
+    news_ai = c3.checkbox(
+        "News AI",
+        value=False
+    )
+
+    strategy_ai = c4.checkbox(
+        "Strategy AI",
+        value=False
+    )
+
+    st.markdown(
+        '<div class="section">DEPLOYMENT CONTROL</div>',
+        unsafe_allow_html=True
+    )
+
+    c1, c2, c3 = st.columns(3)
+
+    if c1.button(
+        "TEST AI CONNECTION",
+        use_container_width=True
+    ):
+
+        previous = st.session_state.ai_enabled
+
+        st.session_state.ai_enabled = True
+
+        response = call_ai(
+            "Reply only with: OMNITRIX AI CONNECTION OK"
+        )
+
+        st.session_state.ai_enabled = previous
+
+        if response:
+            st.success(
+                response
+            )
+        else:
+            st.error(
+                "AI connection failed."
+            )
+
+    if c2.button(
+        "START AI SERVICES",
+        use_container_width=True
+    ):
+
+        st.session_state.ai_enabled = True
+
+        log_event(
+            "AI services enabled"
+        )
+
+        st.success(
+            "AI services enabled."
+        )
+
+    if c3.button(
+        "STOP AI SERVICES",
+        use_container_width=True
+    ):
+
+        st.session_state.ai_enabled = False
+
+        log_event(
+            "AI services disabled"
+        )
+
+        st.warning(
+            "AI services stopped."
+        )
+
+    status = (
+        "ACTIVE"
+        if st.session_state.ai_enabled
+        else "STANDBY"
+    )
+
+    st.metric(
+        "AI SERVICE STATUS",
+        status
+    )
+
+    st.markdown(
+        '<div class="section">AI ARCHITECTURE</div>',
+        unsafe_allow_html=True
+    )
+
+    architecture = pd.DataFrame([
+        {
+            "Agent": "Stock Researcher",
+            "Status": "ON",
+            "Usage": "On demand"
+        },
+        {
+            "Agent": "Scanner Analyst",
+            "Status": "OPTIONAL",
+            "Usage": "Shortlist only"
+        },
+        {
+            "Agent": "News Analyst",
+            "Status": "OPTIONAL",
+            "Usage": "Selected events"
+        },
+        {
+            "Agent": "Strategy Analyst",
+            "Status": "OPTIONAL",
+            "Usage": "Validation"
+        },
+        {
+            "Agent": "Risk Engine",
+            "Status": "ALWAYS ON",
+            "Usage": "Deterministic"
+        },
+        {
+            "Agent": "Execution",
+            "Status": "PAPER",
+            "Usage": "No live orders"
+        },
+    ])
+
+    st.dataframe(
+        architecture,
+        use_container_width=True,
+        hide_index=True
+    )
+
+
+# ============================================================
+# 36. AI RESEARCH
+# ============================================================
+
+def page_ai_research():
+
+    st.markdown(
+        '<div class="section">AI RESEARCH DESK</div>',
+        unsafe_allow_html=True
+    )
+
+    st.write(
+        "This workspace is deliberately separated "
+        "from Stock Research."
+    )
+
+    st.write(
+        "Stock Research = factual market workspace."
+    )
+
+    st.write(
+        "AI Research = optional reasoning layer."
+    )
+
+    if not st.session_state.ai_enabled:
+
+        st.warning(
+            "AI services are currently in standby."
+        )
+
+        return
+
+    symbol = st.selectbox(
+        "Research Security",
+        list(STOCKS.keys())
+    )
+
+    if st.button(
+        "RUN AI RESEARCH",
+        use_container_width=True
+    ):
+
+        package = build_research_package(
+            symbol
+        )
+
+        with st.spinner(
+            "AI research running..."
+        ):
+
+            result = generate_ai_research(
+                package
+            )
 
         st.markdown(
-            "### 🟢 Groww"
-        )
-
-        st.info(
-            groww.connect()["message"]
-        )
-
-    with c2:
-
-        st.markdown(
-            "### 🔵 SBI Securities"
-        )
-
-        st.info(
-            sbi.connect()["message"]
+            result
         )
 
 
 # ============================================================
-# FOOTER
+# 37. STRATEGY LAB
 # ============================================================
 
-st.divider()
+def page_strategy():
 
-st.caption(
-    "OMNITRIX AI • Local Trading Terminal • "
-    "Phase 1 Indian Equities • F&O Disabled"
+    st.markdown(
+        '<div class="section">STRATEGY LAB</div>',
+        unsafe_allow_html=True
+    )
+
+    st.info(
+        "Strategy logic will remain deterministic and "
+        "version-controlled. AI can propose or analyze "
+        "strategies, but the rule engine remains the authority."
+    )
+
+    strategy = st.selectbox(
+        "Strategy",
+        [
+            "Trend + Momentum",
+            "EMA Cross",
+            "Breakout + Volume",
+            "Mean Reversion",
+            "Custom Master Trader Rules"
+        ]
+    )
+
+    st.write(
+        f"Selected strategy: **{strategy}**"
+    )
+
+
+# ============================================================
+# 38. BACKTESTING
+# ============================================================
+
+def page_backtesting():
+
+    st.markdown(
+        '<div class="section">BACKTESTING LAB</div>',
+        unsafe_allow_html=True
+    )
+
+    symbol = st.selectbox(
+        "Security",
+        list(STOCKS.keys())
+    )
+
+    df = get_market_data(
+        symbol,
+        period="2y"
+    )
+
+    if df.empty:
+
+        st.warning(
+            "Historical data unavailable."
+        )
+
+        return
+
+    df = calculate_indicators(
+        df
+    )
+
+    df["Strategy"] = np.where(
+        (
+            (df["EMA9"] > df["EMA21"]) &
+            (df["RSI"] > 50)
+        ),
+        1,
+        0
+    )
+
+    df["MarketReturn"] = (
+        df["Close"].pct_change()
+    )
+
+    df["StrategyReturn"] = (
+        df["MarketReturn"] *
+        df["Strategy"].shift(1)
+    )
+
+    equity = (
+        1 +
+        df["StrategyReturn"].fillna(0)
+    ).cumprod()
+
+    st.metric(
+        "Strategy Growth",
+        f"{(equity.iloc[-1] - 1) * 100:.2f}%"
+    )
+
+    st.line_chart(
+        equity,
+        height=350
+    )
+
+
+# ============================================================
+# 39. TRADE JOURNAL
+# ============================================================
+
+def page_journal():
+
+    st.markdown(
+        '<div class="section">TRADE JOURNAL</div>',
+        unsafe_allow_html=True
+    )
+
+    symbol = st.selectbox(
+        "Security",
+        list(STOCKS.keys())
+    )
+
+    notes = st.text_area(
+        "Trade Notes"
+    )
+
+    if st.button(
+        "SAVE JOURNAL ENTRY",
+        use_container_width=True
+    ):
+
+        row = pd.DataFrame([{
+            "timestamp":
+                datetime.now().strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ),
+            "symbol": symbol,
+            "notes": notes,
+        }])
+
+        if JOURNAL_FILE.exists():
+
+            old = pd.read_csv(
+                JOURNAL_FILE
+            )
+
+            row = pd.concat(
+                [old, row],
+                ignore_index=True
+            )
+
+        row.to_csv(
+            JOURNAL_FILE,
+            index=False
+        )
+
+        st.success(
+            "Journal entry saved."
+        )
+
+    if JOURNAL_FILE.exists():
+
+        st.dataframe(
+            pd.read_csv(
+                JOURNAL_FILE
+            ),
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+# ============================================================
+# 40. SYSTEM LOGS
+# ============================================================
+
+def page_logs():
+
+    st.markdown(
+        '<div class="section">SYSTEM LOGS</div>',
+        unsafe_allow_html=True
+    )
+
+    if st.session_state.system_logs:
+
+        for log in reversed(
+            st.session_state.system_logs
+        ):
+
+            st.code(
+                log,
+                language=None
+            )
+
+    else:
+
+        st.info(
+            "No session logs."
+        )
+
+
+# ============================================================
+# 41. SETTINGS
+# ============================================================
+
+def page_settings():
+
+    st.markdown(
+        '<div class="section">SYSTEM SETTINGS</div>',
+        unsafe_allow_html=True
+    )
+
+    st.write(
+        "Execution Mode"
+    )
+
+    st.selectbox(
+        "Mode",
+        [
+            "PAPER — ACTIVE",
+            "LIVE — DISABLED"
+        ]
+    )
+
+    st.write(
+        "Market"
+    )
+
+    st.selectbox(
+        "Exchange",
+        [
+            "NSE",
+            "BSE",
+            "NSE + BSE"
+        ]
+    )
+
+    st.write(
+        "Asset Class"
+    )
+
+    st.info(
+        "Cash Equities only. "
+        "F&O is disabled in this build."
+    )
+
+    if st.button(
+        "CLEAR RESEARCH CACHE",
+        use_container_width=True
+    ):
+
+        try:
+
+            RESEARCH_CACHE_FILE.unlink(
+                missing_ok=True
+            )
+
+            st.success(
+                "Research cache cleared."
+            )
+
+        except Exception as error:
+
+            st.error(
+                str(error)
+            )
+
+
+# ============================================================
+# 42. ROUTER
+# ============================================================
+
+navigation()
+
+render_header()
+
+page = st.session_state.page
+
+
+if page == "Overview":
+    page_overview()
+
+elif page == "Markets":
+    page_markets()
+
+elif page == "Scanner":
+    page_scanner()
+
+elif page == "Stock Research":
+    page_stock_research()
+
+elif page == "Watchlist":
+    page_watchlist()
+
+elif page == "News":
+    page_news()
+
+elif page == "Themes":
+    page_themes()
+
+elif page == "IPOs":
+    page_ipos()
+
+elif page == "Portfolio":
+    page_portfolio()
+
+elif page == "Positions":
+    page_positions()
+
+elif page == "Orders":
+    page_orders()
+
+elif page == "Paper Trading":
+    page_paper_trading()
+
+elif page == "Risk":
+    page_risk()
+
+elif page == "AI Deployment":
+    page_ai_deployment()
+
+elif page == "AI Research":
+    page_ai_research()
+
+elif page == "Strategy Lab":
+    page_strategy()
+
+elif page == "Backtesting":
+    page_backtesting()
+
+elif page == "Trade Journal":
+    page_journal()
+
+elif page == "System Logs":
+    page_logs()
+
+elif page == "Settings":
+    page_settings()
+
+
+# ============================================================
+# 43. FOOTER
+# ============================================================
+
+st.markdown(
+    """
+    <div style="
+        margin-top:30px;
+        padding-top:10px;
+        border-top:1px solid #252c34;
+        color:#66727e;
+        font-size:10px;
+        text-align:center;
+    ">
+        OMNITRIX TERMINAL • LOCAL RESEARCH SYSTEM •
+        CASH EQUITIES • PAPER EXECUTION
+    </div>
+    """,
+    unsafe_allow_html=True
 )
