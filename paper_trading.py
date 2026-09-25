@@ -1,4 +1,5 @@
 import uuid
+import math
 
 from datetime import datetime
 
@@ -107,31 +108,48 @@ def buy(
     target=None
 ):
 
+    try:
+        symbol = str(symbol).strip().upper()
+        raw_quantity = float(quantity)
+        price = float(price)
+        stop_loss = None if stop_loss is None else float(stop_loss)
+        target = None if target is None else float(target)
+    except (TypeError, ValueError, OverflowError):
+        return False, "Invalid paper order values."
+
+    if not symbol:
+        return False, "Symbol is required."
+
+    if not math.isfinite(raw_quantity) or not raw_quantity.is_integer():
+        return False, "Quantity must be a whole number."
+
+    quantity = int(raw_quantity)
+
+    if quantity <= 0:
+        return False, "Invalid quantity."
+
+    if not math.isfinite(price) or price <= 0:
+        return False, "Price must be a finite positive number."
+
+    if stop_loss is not None and (
+        not math.isfinite(stop_loss) or stop_loss <= 0 or stop_loss >= price
+    ):
+        return False, "Stop loss must be positive and below the entry price."
+
+    if target is not None and (
+        not math.isfinite(target) or target <= price
+    ):
+        return False, "Target must be above the entry price."
+
     account = get_account()
-
-    symbol = symbol.upper()
-
-    quantity = int(
-        quantity
-    )
-
-    price = float(
-        price
-    )
 
     value = (
         quantity *
         price
     )
 
-    if quantity <= 0:
-        return False, "Invalid quantity."
-
-    if value > MAX_POSITION_VALUE:
-        return False, (
-            "Position exceeds maximum "
-            "paper position value."
-        )
+    if not math.isfinite(value):
+        return False, "Order value is outside the supported range."
 
     if account["trading_locked"]:
         return False, (
@@ -148,6 +166,18 @@ def buy(
     ].get(
         symbol
     )
+
+    existing_value = (
+        old["quantity"] * old["average_price"]
+        if old
+        else 0
+    )
+
+    if existing_value + value > MAX_POSITION_VALUE:
+        return False, (
+            "Position would exceed maximum "
+            "paper position value."
+        )
 
     if old:
 
@@ -246,17 +276,28 @@ def sell(
     reason="MANUAL"
 ):
 
+    try:
+        symbol = str(symbol).strip().upper()
+        raw_quantity = float(quantity)
+        price = float(price)
+    except (TypeError, ValueError, OverflowError):
+        return False, "Invalid paper order values."
+
+    if not symbol:
+        return False, "Symbol is required."
+
+    if not math.isfinite(raw_quantity) or not raw_quantity.is_integer():
+        return False, "Quantity must be a whole number."
+
+    quantity = int(raw_quantity)
+
+    if quantity <= 0:
+        return False, "Invalid quantity."
+
+    if not math.isfinite(price) or price <= 0:
+        return False, "Price must be a finite positive number."
+
     account = get_account()
-
-    symbol = symbol.upper()
-
-    quantity = int(
-        quantity
-    )
-
-    price = float(
-        price
-    )
 
     position = account[
         "positions"
@@ -267,11 +308,6 @@ def sell(
     if not position:
         return False, (
             "No paper position exists."
-        )
-
-    if quantity <= 0:
-        return False, (
-            "Invalid quantity."
         )
 
     if quantity > position[
@@ -369,7 +405,12 @@ def monitor_positions(
             symbol
         )
 
-        if price is None:
+        try:
+            price = float(price)
+        except (TypeError, ValueError, OverflowError):
+            continue
+
+        if not math.isfinite(price) or price <= 0:
             continue
 
         stop = position.get(
