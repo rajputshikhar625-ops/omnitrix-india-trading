@@ -163,7 +163,7 @@ elif st.session_state.page=="AI DEPLOYED":
         c[0].metric("NEWS",nm.get("bias","NEUTRAL")); c[1].metric("PRICE",f"₹{t.get('close',0):,.2f}"); c[2].metric("PATTERN",p["patterns"][0]["pattern"] if p["patterns"] else "NONE")
         if st.session_state.get("deploy_report"): st.markdown(st.session_state.deploy_report)
     st.markdown("### Paper execution")
-    st.caption("Entry rules use the deterministic pattern engine. A fresh Yahoo Finance quote is used for sizing. Every order below is simulated locally; no broker order is sent.")
+    st.caption("Entry rules use the deterministic pattern engine. The latest available Yahoo Finance quote is used for sizing. Every order below is simulated locally; no broker order is sent.")
 
     if p and p.get("symbol") == selected:
         if st.button("REFRESH QUOTE & BUILD PAPER RISK PLAN", use_container_width=True, key="paper_plan_build"):
@@ -209,7 +209,7 @@ elif st.session_state.page=="AI DEPLOYED":
                     f"Signal: {', '.join(plan['signal_patterns'])} • "
                     f"Paper notional ₹{plan['notional']:,.2f} • "
                     f"Risk budget ₹{plan['risk_budget']:,.2f} • "
-                    f"Quote time {st.session_state.paper_plan_time:%Y-%m-%d %H:%M:%S}"
+                    f"Plan generated {st.session_state.paper_plan_time:%Y-%m-%d %H:%M:%S}"
                 )
                 plan_age = (datetime.now() - st.session_state.paper_plan_time).total_seconds()
                 if plan_age > 300:
