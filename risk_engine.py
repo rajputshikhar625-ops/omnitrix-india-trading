@@ -105,12 +105,25 @@ def build_paper_trade_plan(package, account, current_price=None):
     risk_per_share = price - stop_loss
     risk_budget = min(equity * 0.0025, MAX_DAILY_LOSS * 0.20)
 
-    if risk_per_share <= 0 or risk_budget <= 0:
+    if (
+        not math.isfinite(stop_loss)
+        or not math.isfinite(target)
+        or risk_per_share <= 0
+        or risk_budget <= 0
+    ):
         return _blocked(symbol, "Configured risk limits do not allow an entry.", price)
 
-    quantity_by_risk = math.floor(risk_budget / risk_per_share)
-    quantity_by_position_cap = math.floor(MAX_POSITION_VALUE / price)
-    quantity_by_cash = math.floor(cash / price)
+    sizing_ratios = (
+        risk_budget / risk_per_share,
+        MAX_POSITION_VALUE / price,
+        cash / price,
+    )
+    if not all(math.isfinite(ratio) for ratio in sizing_ratios):
+        return _blocked(symbol, "Risk sizing is outside the supported numeric range.", price)
+
+    quantity_by_risk = math.floor(sizing_ratios[0])
+    quantity_by_position_cap = math.floor(sizing_ratios[1])
+    quantity_by_cash = math.floor(sizing_ratios[2])
     quantity = min(quantity_by_risk, quantity_by_position_cap, quantity_by_cash)
 
     if quantity < 1:
