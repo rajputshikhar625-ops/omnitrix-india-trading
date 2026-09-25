@@ -126,48 +126,26 @@ def ai_call(
     ].message.content
 
 
-def build_research_prompt(
-    package
-):
-
-    safe_package = {
-        "symbol": package.get(
-            "symbol"
-        ),
-        "technical": package.get(
-            "technical",
-            {}
-        ),
-        "fundamentals": package.get(
-            "fundamentals",
-            {}
-        ),
-        "levels": package.get(
-            "levels",
-            {}
-        ),
-        "news": package.get(
-            "news",
-            []
-        )[:20]
+def build_research_prompt(package):
+    safe_package={
+        "symbol":package.get("symbol"),
+        "technical":package.get("technical",{}),
+        "fundamentals":package.get("fundamentals",{}),
+        "levels":package.get("levels",{}),
+        "news":package.get("news",[])[:20],
+        "news_match":package.get("news_match",{}),
+        "patterns":package.get("patterns",[]),
+        "pattern_history":package.get("pattern_history",{}).to_dict("records") if hasattr(package.get("pattern_history"),"to_dict") else package.get("pattern_history",[])
     }
-
-    data = json.dumps(
-        safe_package,
-        indent=2,
-        default=str
-    )
-
-    return f"""
-Research the following Indian stock.
+    data=json.dumps(safe_package,indent=2,default=str)
+    return f"""Research the following Indian cash-equity stock using ONLY the supplied evidence.
 
 DATA:
 {data}
 
-Return exactly these sections:
+Return these sections:
 
 ## RESEARCH TABLE
-
 | Area | Observation | Interpretation | Confidence |
 |---|---|---|---|
 | Market Regime | | | |
@@ -178,65 +156,33 @@ Return exactly these sections:
 | Technical Levels | | | |
 | Fundamentals | | | |
 | News | | | |
-| Catalysts | | | |
+| Current Chart Pattern | | | |
+| Historical Pattern Behaviour | | | |
 | Risks | | | |
 | Data Gaps | | | |
 
-## TECHNICAL STRUCTURE
+## THREE-SIGNAL CHECK
+Compare independently:
+1. NEWS — recency, relevance, positive/negative/mixed evidence.
+2. PRICE — current movement, momentum and volume.
+3. CHART — EMA/SMA/VWAP/RSI/MACD/ADX and detected pattern.
 
-Explain:
-- EMA structure
-- SMA structure
-- RSI
-- MACD
-- VWAP
-- Bollinger Bands
-- ATR
-- ADX
-- Stochastic
-- CCI
-- MFI
-- OBV
-- ROC
+Explain agreement and conflict between the three.
 
-## MARKET CONTEXT
+## HISTORICAL PATTERN CHECK
+Use the supplied historical pattern statistics. State sample size and average/win-rate evidence when available. Never treat historical frequency as a guarantee.
 
-Explain whether the evidence indicates:
-- bullish evidence
-- bearish evidence
-- mixed evidence
-- insufficient evidence
+## EXIT / INVALIDATION LOGIC
+Describe objective conditions that would invalidate the research thesis and objective paper-trading exit conditions. Do not place a real order.
 
-Do not convert this into certainty.
-
-## LEVELS
-
-Discuss:
-- support
-- resistance
-- pivot
-- Fibonacci levels
-
-## NEWS INTELLIGENCE
-
-Identify:
-- important recent developments
-- possible catalysts
-- possible risks
-- conflicting news
+## UNCERTAINTY
+State the largest missing or unreliable information.
 
 ## RESEARCH STATUS
-
-End with:
-
 Research completeness: X/100
 Data quality: HIGH/MEDIUM/LOW
-Major uncertainty:
 What should be monitored next:
-"""
-
-
-def autonomous_research(
+"""\ndef autonomous_research(
     package,
     provider=None
 ):
