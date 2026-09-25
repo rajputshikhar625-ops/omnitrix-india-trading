@@ -1,14 +1,12 @@
 import uuid
 import math
 
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta, timezone
 
 from config import (
     PAPER_INITIAL_CAPITAL,
     MAX_POSITION_VALUE,
     MAX_DAILY_LOSS,
-    MARKET_TIMEZONE,
 )
 
 from storage import (
@@ -20,6 +18,9 @@ from storage import (
 )
 
 
+INDIA_TIMEZONE = timezone(timedelta(hours=5, minutes=30))
+
+
 def create_account():
 
     return {
@@ -29,14 +30,14 @@ def create_account():
         "positions": {},
         "daily_start_equity": PAPER_INITIAL_CAPITAL,
         "trading_locked": False,
-        "trading_day": datetime.now(ZoneInfo(MARKET_TIMEZONE)).date().isoformat()
+        "trading_day": datetime.now(INDIA_TIMEZONE).date().isoformat()
     }
 
 
 def get_account():
 
     account = load_paper_account()
-    today = datetime.now(ZoneInfo(MARKET_TIMEZONE)).date().isoformat()
+    today = datetime.now(INDIA_TIMEZONE).date().isoformat()
 
     if account is None:
 
@@ -511,7 +512,7 @@ def reset_daily_lock():
     account[
         "trading_locked"
     ] = False
-    account["trading_day"] = datetime.now(ZoneInfo(MARKET_TIMEZONE)).date().isoformat()
+    account["trading_day"] = datetime.now(INDIA_TIMEZONE).date().isoformat()
 
     save_account(
         account
