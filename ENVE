@@ -1,8 +1,20 @@
-# Groww real-time market data / paper execution preparation
+# ==============================
+# OMNITRIX CONFIGURATION
+# ==============================
+
+# Groww API
 GROWW_ACCESS_TOKEN=
 
-# Optional cloud AI
+# Groq
 GROQ_API_KEY=
 
-# Optional local OpenAI-compatible LLM key (usually not required)
+# Local Llama / Ollama
+LOCAL_LLM_BASE_URL=http://localhost:11434/v1
 LOCAL_LLM_API_KEY=local
+LOCAL_LLM_MODEL=llama3.1
+
+# AI provider
+AI_PROVIDER=LOCAL
+
+# Paper account
+PAPER_INITIAL_CAPITAL=1000000
