@@ -1,180 +1,171 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from config import APP_VERSION, PAPER_INITIAL_CAPITAL, LOCAL_LLM_MODEL
-from market_data import market_snapshot, get_nifty_price, yahoo_history
-from indicators import add_indicators
+from config import APP_VERSION, LOCAL_LLM_MODEL
+from market_data import market_snapshot, get_nifty_price
 from research_engine import research_stock
-from news_engine import fetch_news
-from ai_engine import autonomous_research, test_ai, ai_call
 from scanner import scan_universe
+from ai_engine import ai_call, autonomous_research, test_ai
 from charts import candlestick_chart, oscillator_chart, volume_chart
-from paper_trading import get_account, buy, sell, monitor_positions
-from storage import load_orders
+from paper_trading import get_account, monitor_positions
+from learning_engine import learning_report, mistakes_by_reason
 
-st.set_page_config(page_title="OMNITRIX",page_icon="O",layout="wide",initial_sidebar_state="collapsed")
+st.set_page_config(page_title="OMNITRIX",page_icon="◈",layout="wide",initial_sidebar_state="collapsed")
 
 st.markdown("""
 <style>
-.stApp{background:radial-gradient(circle at 65% -15%,#123a5b 0,#030811 42%);color:#f4f8fc}
-.block-container{max-width:1800px;padding:.7rem 1.2rem 2rem}
-html,body,[class*="css"]{font-family:Inter,Segoe UI,Arial,sans-serif}
-p,span,label,h1,h2,h3,h4{color:#f4f8fc}
-input,textarea,div[data-baseweb="select"]>div{background:#071321!important;color:#f4f8fc!important;border:1px solid #24445f!important}
-input::placeholder,textarea::placeholder{color:#6e879c!important}
-.stButton>button{background:#0b2944;color:#fff;border:1px solid #24597a;border-radius:9px;font-weight:650}
-.stButton>button:hover{background:#103b5f;border-color:#4ee7ff}
-[data-testid="stMetric"]{background:#071321;border:1px solid #19324a;border-radius:12px}
-[data-testid="stDataFrame"]{border:1px solid #19324a;border-radius:12px}
-.hero{border:1px solid #21415e;border-radius:18px;padding:24px 28px;margin-bottom:12px;background:linear-gradient(120deg,rgba(6,19,33,.98),rgba(7,33,55,.9))}
-.hero .tag{color:#4ee7ff;font-size:.76rem;font-weight:800;letter-spacing:2px}
-.hero h1{font-size:2.2rem;margin:.15rem 0}
-.hero p{color:#a9bdd0;margin:.25rem 0}
-.navhint{color:#7f98ad;font-size:.78rem;margin-bottom:8px}
-.bento{border:1px solid #19324a;border-radius:14px;padding:16px;background:linear-gradient(145deg,#071321,#0a1c2e);min-height:130px;margin-bottom:10px}
-.bento h3{font-size:1rem;margin:0 0 7px}
-.bento .big{font-size:1.4rem;font-weight:750}
-.card{border:1px solid #19324a;border-radius:14px;padding:14px;background:#071321;margin-bottom:12px}
-.green{color:#22d39b}.red{color:#ff6170}.muted{color:#8da1b6}
+.stApp{background:#05090f;color:#eef6ff}
+.block-container{max-width:1700px;padding:12px 28px 35px}
+header[data-testid="stHeader"]{background:transparent}
+p,span,label,h1,h2,h3,h4,h5{color:#eef6ff}
+input,textarea,[data-baseweb="select"]>div{background:#08111d!important;color:#eef6ff!important;border:1px solid #1b344d!important}
+input::placeholder,textarea::placeholder{color:#62788e!important}
+.stButton>button{height:42px;background:#091827;color:#f5fbff;border:1px solid #214967;border-radius:8px;font-weight:700;letter-spacing:.2px}
+.stButton>button:hover{background:#0d2b44;border-color:#36c7ff}
+[data-testid="stMetric"]{background:#08111d;border:1px solid #183149;border-radius:10px;padding:8px}
+[data-testid="stDataFrame"]{border:1px solid #173149;border-radius:10px}
+div[data-testid="stTabs"] button{color:#8fa5b9!important}
+.hero{background:linear-gradient(115deg,#07111c 0%,#0b2033 58%,#08131f 100%);border:1px solid #1e405b;border-radius:15px;padding:20px 24px;margin-bottom:10px;box-shadow:0 12px 40px rgba(0,0,0,.22)}
+.kicker{font-size:11px;color:#49d9ff;font-weight:800;letter-spacing:2.2px}
+.title{font-size:34px;font-weight:800;letter-spacing:1px;margin:2px 0}
+.subtitle{color:#8ea5ba;font-size:13px}
+.nav{background:#07111c;border:1px solid #173149;border-radius:10px;padding:5px;margin:8px 0 14px}
+.bento{background:linear-gradient(145deg,#081522,#0b1b2a);border:1px solid #19364e;border-radius:12px;padding:15px;min-height:105px}
+.bento .label{font-size:11px;color:#6f91aa;letter-spacing:1.2px;font-weight:800}
+.bento .value{font-size:22px;font-weight:800;margin-top:5px}
+.bento .sub{font-size:12px;color:#8298aa;margin-top:3px}
+.section{font-size:18px;font-weight:800;margin:15px 0 8px}
+.signal{background:#071522;border:1px solid #1a3a54;border-radius:12px;padding:14px;min-height:120px}
+.signal .head{font-size:12px;font-weight:800;letter-spacing:1.2px;color:#51dfff}
+.signal .body{font-size:13px;color:#9eb0c0;margin-top:7px;line-height:1.5}
+.status{display:inline-block;border:1px solid #245a47;border-radius:20px;padding:4px 10px;color:#36d9a0;background:#071912;font-size:11px;font-weight:800}
+.warn{border:1px solid #5a4b20;background:#171306;border-radius:10px;padding:11px;color:#e5c36b}
 </style>
 """,unsafe_allow_html=True)
 
 STOCKS={
-"RELIANCE.NS":"Reliance Industries","TCS.NS":"Tata Consultancy Services","INFY.NS":"Infosys","HDFCBANK.NS":"HDFC Bank",
-"ICICIBANK.NS":"ICICI Bank","SBIN.NS":"State Bank of India","BHARTIARTL.NS":"Bharti Airtel","ITC.NS":"ITC",
-"LT.NS":"Larsen & Toubro","AXISBANK.NS":"Axis Bank","KOTAKBANK.NS":"Kotak Mahindra Bank","HINDUNILVR.NS":"Hindustan Unilever",
-"MARUTI.NS":"Maruti Suzuki","M&M.NS":"Mahindra & Mahindra","TATAMOTORS.NS":"Tata Motors","SUNPHARMA.NS":"Sun Pharma",
-"ADANIENT.NS":"Adani Enterprises","ADANIPORTS.NS":"Adani Ports","NTPC.NS":"NTPC","POWERGRID.NS":"Power Grid",
-"ONGC.NS":"ONGC","COALINDIA.NS":"Coal India","TATASTEEL.NS":"Tata Steel","JSWSTEEL.NS":"JSW Steel",
-"HINDALCO.NS":"Hindalco","WIPRO.NS":"Wipro","HCLTECH.NS":"HCL Technologies","TECHM.NS":"Tech Mahindra",
-"LTIM.NS":"LTIMindtree","ASIANPAINT.NS":"Asian Paints","ULTRACEMCO.NS":"UltraTech Cement","TITAN.NS":"Titan",
-"BAJFINANCE.NS":"Bajaj Finance","BAJAJFINSV.NS":"Bajaj Finserv","HDFCLIFE.NS":"HDFC Life","SBILIFE.NS":"SBI Life",
-"DRREDDY.NS":"Dr Reddy's","CIPLA.NS":"Cipla","DIVISLAB.NS":"Divi's Laboratories","EICHERMOT.NS":"Eicher Motors",
-"HEROMOTOCO.NS":"Hero MotoCorp","BAJAJ-AUTO.NS":"Bajaj Auto","GRASIM.NS":"Grasim","BRITANNIA.NS":"Britannia",
-"NESTLEIND.NS":"Nestle India","TRENT.NS":"Trent","BEL.NS":"Bharat Electronics","HAL.NS":"Hindustan Aeronautics",
-"IRCTC.NS":"IRCTC","IOC.NS":"Indian Oil","BPCL.NS":"BPCL","GAIL.NS":"GAIL","VEDL.NS":"Vedanta","ZOMATO.NS":"Zomato",
-"DLF.NS":"DLF","PIDILITIND.NS":"Pidilite","SIEMENS.NS":"Siemens","ABB.NS":"ABB India","INDUSINDBK.NS":"IndusInd Bank",
-"BANKBARODA.NS":"Bank of Baroda","PNB.NS":"Punjab National Bank","CANBK.NS":"Canara Bank","IDFCFIRSTB.NS":"IDFC First Bank",
-"MOTHERSON.NS":"Samvardhana Motherson","ASHOKLEY.NS":"Ashok Leyland","TVSMOTOR.NS":"TVS Motor","APOLLOHOSP.NS":"Apollo Hospitals",
-"MAXHEALTH.NS":"Max Healthcare","LUPIN.NS":"Lupin","AUROPHARMA.NS":"Aurobindo Pharma","DABUR.NS":"Dabur","GODREJCP.NS":"Godrej Consumer",
-"TATACONSUM.NS":"Tata Consumer","VOLTAS.NS":"Voltas","HAVELLS.NS":"Havells","DIXON.NS":"Dixon Technologies","PERSISTENT.NS":"Persistent Systems",
-"COFORGE.NS":"Coforge","POLYCAB.NS":"Polycab"}
+"RELIANCE.NS":"Reliance Industries","TCS.NS":"Tata Consultancy Services","INFY.NS":"Infosys","HDFCBANK.NS":"HDFC Bank","ICICIBANK.NS":"ICICI Bank","SBIN.NS":"State Bank of India","BHARTIARTL.NS":"Bharti Airtel","ITC.NS":"ITC","LT.NS":"Larsen & Toubro","AXISBANK.NS":"Axis Bank","KOTAKBANK.NS":"Kotak Mahindra Bank","HINDUNILVR.NS":"Hindustan Unilever","MARUTI.NS":"Maruti Suzuki","M&M.NS":"Mahindra & Mahindra","TATAMOTORS.NS":"Tata Motors","SUNPHARMA.NS":"Sun Pharma","ADANIENT.NS":"Adani Enterprises","ADANIPORTS.NS":"Adani Ports","NTPC.NS":"NTPC","POWERGRID.NS":"Power Grid","ONGC.NS":"ONGC","COALINDIA.NS":"Coal India","TATASTEEL.NS":"Tata Steel","JSWSTEEL.NS":"JSW Steel","HINDALCO.NS":"Hindalco","WIPRO.NS":"Wipro","HCLTECH.NS":"HCL Technologies","TECHM.NS":"Tech Mahindra","LTIM.NS":"LTIMindtree","ASIANPAINT.NS":"Asian Paints","ULTRACEMCO.NS":"UltraTech Cement","TITAN.NS":"Titan","BAJFINANCE.NS":"Bajaj Finance","BAJAJFINSV.NS":"Bajaj Finserv","HDFCLIFE.NS":"HDFC Life","SBILIFE.NS":"SBI Life","DRREDDY.NS":"Dr Reddy's","CIPLA.NS":"Cipla","DIVISLAB.NS":"Divi's Laboratories","EICHERMOT.NS":"Eicher Motors","HEROMOTOCO.NS":"Hero MotoCorp","BAJAJ-AUTO.NS":"Bajaj Auto","GRASIM.NS":"Grasim","BRITANNIA.NS":"Britannia","NESTLEIND.NS":"Nestle India","TRENT.NS":"Trent","BEL.NS":"Bharat Electronics","HAL.NS":"Hindustan Aeronautics","IRCTC.NS":"IRCTC","IOC.NS":"Indian Oil","BPCL.NS":"BPCL","GAIL.NS":"GAIL","VEDL.NS":"Vedanta","ZOMATO.NS":"Zomato","DLF.NS":"DLF","PIDILITIND.NS":"Pidilite","SIEMENS.NS":"Siemens","ABB.NS":"ABB India","INDUSINDBK.NS":"IndusInd Bank","BANKBARODA.NS":"Bank of Baroda","PNB.NS":"Punjab National Bank","CANBK.NS":"Canara Bank","IDFCFIRSTB.NS":"IDFC First Bank","MOTHERSON.NS":"Samvardhana Motherson","ASHOKLEY.NS":"Ashok Leyland","TVSMOTOR.NS":"TVS Motor","APOLLOHOSP.NS":"Apollo Hospitals","MAXHEALTH.NS":"Max Healthcare","LUPIN.NS":"Lupin","AUROPHARMA.NS":"Aurobindo Pharma","DABUR.NS":"Dabur","GODREJCP.NS":"Godrej Consumer","TATACONSUM.NS":"Tata Consumer","VOLTAS.NS":"Voltas","HAVELLS.NS":"Havells","DIXON.NS":"Dixon Technologies","PERSISTENT.NS":"Persistent Systems","COFORGE.NS":"Coforge","POLYCAB.NS":"Polycab"}
 
 if "page" not in st.session_state: st.session_state.page="MARKET"
-if "symbol" not in st.session_state: st.session_state.symbol="RELIANCE.NS"
-if "report" not in st.session_state: st.session_state.report=""
+if "selected" not in st.session_state: st.session_state.selected="RELIANCE.NS"
+if "pkg" not in st.session_state: st.session_state.pkg=None
 if "chat" not in st.session_state: st.session_state.chat=[]
 
-st.markdown(f'<div class="hero"><div class="tag">ANALYZE • REASON • TRADE</div><h1>OMNITRIX</h1><p>AI-powered Indian cash-equity intelligence terminal</p><p>Local {LOCAL_LLM_MODEL} • Paper environment • F&O disabled • Live execution disabled • v{APP_VERSION}</p></div>',unsafe_allow_html=True)
+st.markdown(f'<div class="hero"><div class="kicker">OMNITRIX INTELLIGENCE TERMINAL</div><div class="title">OMNITRIX</div><div class="subtitle">Indian cash-equity research • pattern intelligence • local AI • paper execution</div><div style="margin-top:9px"><span class="status">LLaMA {LOCAL_LLM_MODEL} ONLINE</span> <span class="subtitle"> &nbsp; F&O OFF &nbsp;•&nbsp; LIVE ORDERS OFF &nbsp;•&nbsp; PAPER MODE</span></div></div>',unsafe_allow_html=True)
 
 nav=st.columns(5)
 for i,name in enumerate(["MARKET","AI","RESEARCHER","SCANNER","AI DEPLOYED"]):
-    if nav[i].button(name,use_container_width=True,key="nav_"+name):
-        st.session_state.page=name
-        st.rerun()
+    active=" ▪" if st.session_state.page==name else ""
+    if nav[i].button(name+active,use_container_width=True,key="nav_"+name):
+        st.session_state.page=name; st.rerun()
 
-# MARKET
 if st.session_state.page=="MARKET":
-    nifty=get_nifty_price(); account=get_account()
-    c=st.columns(4)
-    c[0].metric("NIFTY 50",f"₹{nifty:,.2f}" if nifty else "DATA")
-    c[1].metric("Paper Cash",f"₹{account['cash']:,.0f}")
-    c[2].metric("Realized P&L",f"₹{account['realized_pnl']:,.0f}")
-    c[3].metric("AI", "ONLINE")
-    st.markdown("### Bento command center")
-    b=st.columns(4)
-    for col,title,big,sub in [
-        (b[0],"MARKET","Indian Equities","NSE/BSE research"),
-        (b[1],"AI",LOCAL_LLM_MODEL,"Local reasoning"),
-        (b[2],"RESEARCHER","Multi-source","Fundamental + technical"),
-        (b[3],"SCANNER","50 STOCKS","Fast opportunity scan")]:
-        with col: st.markdown(f'<div class="bento"><h3>{title}</h3><div class="big">{big}</div><div class="muted">{sub}</div></div>',unsafe_allow_html=True)
-    st.markdown("### Market")
-    snap=market_snapshot(list(STOCKS)[:30])
+    nifty=get_nifty_price(); a=get_account()
+    st.markdown('<div class="section">Command Center</div>',unsafe_allow_html=True)
+    c=st.columns(5)
+    cards=[("NIFTY 50",f"₹{nifty:,.2f}" if nifty else "DATA","market pulse"),("PAPER CASH",f"₹{a['cash']:,.0f}","test capital"),("REALIZED P&L",f"₹{a['realized_pnl']:,.0f}","paper ledger"),("UNIVERSE",f"{len(STOCKS)}","Indian equities"),("AI STATUS","ONLINE","local LLaMA")]
+    for col,(l,v,s) in zip(c,cards):
+        col.markdown(f'<div class="bento"><div class="label">{l}</div><div class="value">{v}</div><div class="sub">{s}</div></div>',unsafe_allow_html=True)
+    st.markdown('<div class="section">Market Pulse</div>',unsafe_allow_html=True)
+    if st.button("REFRESH MARKET SNAPSHOT",use_container_width=True):
+        st.cache_data.clear(); st.rerun()
+    snap=market_snapshot(list(STOCKS)[:50])
     if not snap.empty: st.dataframe(snap,use_container_width=True,hide_index=True)
+    st.caption("Price source: Groww LTP when configured; otherwise YFinance fallback. Exchange-grade live feed will be added only after deliberate activation.")
 
-# AI
 elif st.session_state.page=="AI":
-    st.subheader("AI")
-    st.caption("Chat with local Llama and turn your trading observations into explicit, testable pattern rules.")
-    for m in st.session_state.chat[-10:]:
-        st.chat_message(m["role"]).markdown(m["content"])
-    prompt=st.chat_input("Ask OMNITRIX about a pattern, chart setup, news impact or rule")
-    if prompt:
-        st.session_state.chat.append({"role":"user","content":prompt})
-        try:
-            ans=ai_call("User request:\n"+prompt+"\nGive a concise, evidence-first answer. If discussing a trading pattern, specify conditions, invalidation and uncertainty.",temperature=.15)
-        except Exception as e: ans=f"AI error: {e}"
-        st.session_state.chat.append({"role":"assistant","content":ans})
-        st.rerun()
-    st.markdown("### Pattern training")
-    p=st.text_area("Describe your pattern","Example: price breaks resistance, volume expands, trend is above EMA21, news confirms the move.")
-    if st.button("ANALYZE PATTERN"):
-        try: st.markdown(ai_call("Convert this user pattern into a deterministic research rule. Identify entry evidence, confirmation, invalidation, exit logic, risk constraints and missing data. Pattern:\n"+p,temperature=.1))
-        except Exception as e: st.error(str(e))
+    st.markdown('<div class="section">AI Workspace</div>',unsafe_allow_html=True)
+    left,right=st.columns([1.7,1])
+    with left:
+        for m in st.session_state.chat[-12:]: st.chat_message(m["role"]).markdown(m["content"])
+        prompt=st.chat_input("Ask about a setup, pattern, news reaction, exit rule or research question")
+        if prompt:
+            st.session_state.chat.append({"role":"user","content":prompt})
+            try: ans=ai_call(prompt+"\nAnswer as an evidence-first trading research assistant. Do not place orders.")
+            except Exception as e: ans="AI error: "+str(e)
+            st.session_state.chat.append({"role":"assistant","content":ans}); st.rerun()
+    with right:
+        st.markdown('<div class="bento"><div class="label">PATTERN MEMORY</div><div class="value">Human → Rule</div><div class="sub">Describe your own trading pattern and OMNITRIX converts it into testable conditions.</div></div>',unsafe_allow_html=True)
+        p=st.text_area("Pattern description","Example: breakout + volume expansion + positive news + EMA trend.")
+        if st.button("CONVERT TO RULE",use_container_width=True):
+            try: st.write(ai_call("Convert this trading idea into deterministic conditions, confirmation, invalidation, exit and risk rules. Do not invent evidence.\n"+p))
+            except Exception as e: st.error(str(e))
 
-# RESEARCHER
 elif st.session_state.page=="RESEARCHER":
+    st.markdown('<div class="section">Researcher</div>',unsafe_allow_html=True)
     symbols=list(STOCKS)
-    selected=st.selectbox("Security",symbols,index=symbols.index(st.session_state.symbol),format_func=lambda s:f"{STOCKS[s]} • {s}")
-    st.session_state.symbol=selected
-    if st.button("LOAD FULL RESEARCH",use_container_width=True):
-        with st.spinner("Collecting market, technical, fundamental and news evidence..."):
-            st.session_state.pkg=research_stock(selected)
-    pkg=st.session_state.get("pkg")
-    if pkg:
-        t=pkg["technical"]; q=st.columns(5)
-        q[0].metric("Price",f"₹{t.get('close',0):,.2f}"); q[1].metric("RSI",f"{t.get('rsi',0):.1f}")
-        q[2].metric("ADX",f"{t.get('adx',0):.1f}"); q[3].metric("Volume",f"{t.get('volume_ratio',0):.2f}x"); q[4].metric("ATR",f"{t.get('atr',0):.2f}")
-        st.plotly_chart(candlestick_chart(pkg["history"],selected),use_container_width=True)
+    selected=st.selectbox("Security",symbols,index=symbols.index(st.session_state.selected),format_func=lambda s:f"{STOCKS[s]}  •  {s}")
+    st.session_state.selected=selected
+    if st.button("LOAD RESEARCH PACKAGE",use_container_width=True):
+        with st.spinner("Loading 2Y history + intraday chart + indicators + YFinance news..."): st.session_state.pkg=research_stock(selected)
+    p=st.session_state.pkg
+    if p:
+        t=p["technical"]; q=st.columns(6)
+        for col,l,k in zip(q,["PRICE","RSI","ADX","VOL RATIO","ATR","PATTERN"],["close","rsi","adx","volume_ratio","atr",None]):
+            v=p["patterns"][0]["pattern"] if k is None and p["patterns"] else ("NO CLEAR" if k is None else t.get(k))
+            col.metric(l, v if isinstance(v,str) else f"{v:.2f}" if v is not None else "DATA")
+        chart_df=p["intraday"] if not p["intraday"].empty else p["history"]
+        st.plotly_chart(candlestick_chart(chart_df,selected),use_container_width=True)
         x,y=st.columns(2)
-        with x: st.plotly_chart(volume_chart(pkg["history"]),use_container_width=True)
-        with y: st.plotly_chart(oscillator_chart(pkg["history"],["rsi","stoch_k","stoch_d"],"Momentum"),use_container_width=True)
-        st.markdown("### Recent news")
-        for item in pkg["news"][:10]: st.markdown(f"**{item['title']}**  \n<span class='muted'>{item['publisher']} • {item['published']}</span>",unsafe_allow_html=True)
-        if st.button("RUN AI DEEP RESEARCH"):
-            with st.spinner("Llama is synthesizing supplied evidence..."):
-                st.session_state.report=autonomous_research(pkg)
-        if st.session_state.report: st.markdown(st.session_state.report)
+        with x: st.plotly_chart(volume_chart(chart_df),use_container_width=True)
+        with y: st.plotly_chart(oscillator_chart(chart_df,["rsi","stoch_k","stoch_d"],"Momentum"),use_container_width=True)
+        st.markdown('<div class="section">Evidence Matrix</div>',unsafe_allow_html=True)
+        sig=st.columns(3)
+        nm=p.get("news_match",{})
+        with sig[0]: st.markdown(f'<div class="signal"><div class="head">NEWS</div><div class="body">{nm.get("bias","NEUTRAL")} • score {nm.get("score",0)}<br>{nm.get("headline","No recent headline")}</div></div>',unsafe_allow_html=True)
+        with sig[1]: st.markdown(f'<div class="signal"><div class="head">PRICE</div><div class="body">₹{t.get("close",0):,.2f}<br>RSI {t.get("rsi",0):.1f} • Volume {t.get("volume_ratio",0):.2f}x</div></div>',unsafe_allow_html=True)
+        with sig[2]: st.markdown(f'<div class="signal"><div class="head">CHART</div><div class="body">{", ".join(x["pattern"] for x in p.get("patterns",[])[:4]) or "No clear pattern"}</div></div>',unsafe_allow_html=True)
+        st.markdown("### Historical pattern behaviour")
+        st.dataframe(p["pattern_history"],use_container_width=True,hide_index=True)
+        st.markdown("### Recent YFinance news")
+        for n in p["news"][:10]: st.markdown(f"**{n['title']}** — {n['publisher']}  <span class='subtitle'>{n['published']}</span>",unsafe_allow_html=True)
+        if st.button("AI DEEP RESEARCH",use_container_width=True):
+            with st.spinner("LLaMA comparing news + price + chart + historical pattern evidence..."): st.session_state.report=autonomous_research(p)
+        if st.session_state.get("report"): st.markdown(st.session_state.report)
 
-# SCANNER
 elif st.session_state.page=="SCANNER":
-    st.subheader("Scanner")
-    st.caption("The scanner checks a large universe first; AI is reserved for the shortlist.")
-    n=st.slider("Universe",20,min(80,len(STOCKS)),50)
-    if st.button("RUN 50-STOCK SCAN",use_container_width=True):
-        with st.spinner("Scanning technical conditions..."):
-            st.session_state.scan=scan_universe(list(STOCKS),limit=n)
-    result=st.session_state.get("scan",pd.DataFrame())
-    if not result.empty:
-        st.dataframe(result,use_container_width=True,hide_index=True)
-        st.markdown("### Chart scanner")
-        st.info("Current chart scanner uses EMA/SMA, RSI, MACD, VWAP, volume, ADX, MFI and related indicators. Advanced named patterns can be added to the rule library next.")
+    st.markdown('<div class="section">50-Stock Scanner</div>',unsafe_allow_html=True)
+    st.caption("Deterministic filtering first. AI is used only after the shortlist.")
+    n=st.slider("Universe size",20,min(80,len(STOCKS)),50)
+    if st.button("SCAN NOW",use_container_width=True):
+        with st.spinner(f"Parallel scan of {n} stocks..."): st.session_state.scan=scan_universe(list(STOCKS),n)
+    r=st.session_state.get("scan",pd.DataFrame())
+    if not r.empty:
+        st.dataframe(r,use_container_width=True,hide_index=True)
+        st.markdown("### Pattern shortlist")
+        top=r.head(10)
+        st.dataframe(top[["symbol","price","score","pattern","rsi","volume_ratio","adx"]],use_container_width=True,hide_index=True)
+        if st.button("SEND TOP 5 TO AI",use_container_width=True):
+            reports=[]
+            for s in top.head(5)["symbol"]:
+                try: reports.append(autonomous_research(research_stock(s)))
+                except Exception as e: reports.append(f"{s}: {e}")
+            st.session_state.scan_ai="\n\n---\n\n".join(reports)
+        if st.session_state.get("scan_ai"): st.markdown(st.session_state.scan_ai)
 
-# AI DEPLOYED
 elif st.session_state.page=="AI DEPLOYED":
-    st.subheader("AI Deployed")
-    st.warning("This environment is paper-only. Live broker execution is disabled.")
-    a,b,c=st.columns(3)
-    a.metric("AI", "ONLINE"); b.metric("Model",LOCAL_LLM_MODEL); c.metric("Execution","PAPER")
-    st.markdown("### Three-signal reasoning panel")
-    cols=st.columns(3)
-    for col,title,body in [
-        (cols[0],"NEWS","Good / bad / neutral + relevance"),
-        (cols[1],"PRICE","Up / down / mixed + momentum"),
-        (cols[2],"CHART","EMA • RSI • MACD • VWAP • Volume • ADX")]:
-        with col: st.markdown(f'<div class="bento"><h3>{title}</h3><div class="muted">{body}</div></div>',unsafe_allow_html=True)
-    selected=st.selectbox("Focus stock",list(STOCKS),format_func=lambda s:f"{STOCKS[s]} • {s}")
-    if st.button("RUN AI ANALYSIS",use_container_width=True):
-        with st.spinner("Matching market, chart and news evidence..."):
-            pkg=research_stock(selected)
-            st.session_state.deploy_report=autonomous_research(pkg)
-    if st.session_state.get("deploy_report"): st.markdown(st.session_state.deploy_report)
-    st.markdown("### Paper position controls")
-    st.caption("Automatic exit monitoring is available in the paper engine; it does not connect to a broker.")
-    acct=get_account()
-    if acct["positions"]: st.json(acct["positions"])
-    else: st.info("No paper positions yet.")
+    st.markdown('<div class="section">AI Deployed — Decision Engine</div>',unsafe_allow_html=True)
+    st.markdown('<div class="warn">AUTONOMOUS LIVE TRADING IS NOT ACTIVE. The decision pipeline is being built and tested in paper mode only.</div>',unsafe_allow_html=True)
+    c=st.columns(4)
+    for col,l,v,s in zip(c,["NEWS","PRICE","CHART","RISK"],["Signal","Momentum","Structure","Hard gate"],["YFinance headlines","current movement","indicators + patterns","stop / loss limit"]):
+        col.markdown(f'<div class="bento"><div class="label">{l}</div><div class="value">{v}</div><div class="sub">{s}</div></div>',unsafe_allow_html=True)
+    selected=st.selectbox("AI focus stock",list(STOCKS),format_func=lambda s:f"{STOCKS[s]} • {s}",key="deploy_stock")
+    if st.button("RUN DECISION SIMULATION",use_container_width=True):
+        with st.spinner("Comparing news + current price + chart + historical pattern..."):
+            p=research_stock(selected); st.session_state.deploy_pkg=p
+            st.session_state.deploy_report=autonomous_research(p)
+    p=st.session_state.get("deploy_pkg")
+    if p:
+        nm=p.get("news_match",{}); t=p["technical"]
+        c=st.columns(3)
+        c[0].metric("NEWS",nm.get("bias","NEUTRAL")); c[1].metric("PRICE",f"₹{t.get('close',0):,.2f}"); c[2].metric("PATTERN",p["patterns"][0]["pattern"] if p["patterns"] else "NONE")
+        if st.session_state.get("deploy_report"): st.markdown(st.session_state.deploy_report)
+    st.markdown("### Self-learning / mistake review")
+    lr=learning_report()
+    c=st.columns(4)
+    c[0].metric("Completed trades",lr["trades"]); c[1].metric("Win rate",f"{lr['win_rate']:.1f}%" if lr["win_rate"] is not None else "DATA"); c[2].metric("Wins",lr["wins"]); c[3].metric("Avg P&L",f"₹{lr['avg_pnl']:,.2f}" if lr["avg_pnl"] is not None else "DATA")
+    st.dataframe(mistakes_by_reason(),use_container_width=True,hide_index=True)
+    st.caption("OMNITRIX learns by measuring paper-trade outcomes and updating the research record. It will not silently rewrite its own strategy or risk controls.")
 
 st.markdown("---")
-st.caption("OMNITRIX • Local AI • Indian cash equities • F&O disabled • live execution disabled")
+st.caption(f"OMNITRIX v{APP_VERSION} • Local LLaMA • YFinance research/news • Groww feed reserved for later • Cash equities only")
