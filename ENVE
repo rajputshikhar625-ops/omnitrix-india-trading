@@ -1,0 +1,8 @@
+# Groww real-time market data / paper execution preparation
+GROWW_ACCESS_TOKEN=
+
+# Optional cloud AI
+GROQ_API_KEY=
+
+# Optional local OpenAI-compatible LLM key (usually not required)
+LOCAL_LLM_API_KEY=local
