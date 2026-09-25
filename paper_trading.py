@@ -45,7 +45,8 @@ def get_account():
 
     elif not account.get("trading_day"):
 
-        # Preserve legacy account limits and lock state during migration.
+        # Start daily-loss tracking from the migrated account's current equity.
+        account["daily_start_equity"] = equity(account, {})
         account["trading_day"] = today
         save_paper_account(account)
 
