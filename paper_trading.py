@@ -2,11 +2,13 @@ import uuid
 import math
 
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from config import (
     PAPER_INITIAL_CAPITAL,
     MAX_POSITION_VALUE,
-    MAX_DAILY_LOSS
+    MAX_DAILY_LOSS,
+    MARKET_TIMEZONE,
 )
 
 from storage import (
@@ -26,21 +28,33 @@ def create_account():
         "realized_pnl": 0.0,
         "positions": {},
         "daily_start_equity": PAPER_INITIAL_CAPITAL,
-        "trading_locked": False
+        "trading_locked": False,
+        "trading_day": datetime.now(ZoneInfo(MARKET_TIMEZONE)).date().isoformat()
     }
 
 
 def get_account():
 
     account = load_paper_account()
+    today = datetime.now(ZoneInfo(MARKET_TIMEZONE)).date().isoformat()
 
     if account is None:
 
         account = create_account()
+        save_paper_account(account)
 
-        save_paper_account(
-            account
-        )
+    elif not account.get("trading_day"):
+
+        # Preserve legacy account limits and lock state during migration.
+        account["trading_day"] = today
+        save_paper_account(account)
+
+    elif account["trading_day"] != today:
+
+        account["daily_start_equity"] = equity(account, {})
+        account["trading_locked"] = False
+        account["trading_day"] = today
+        save_paper_account(account)
 
     return account
 
@@ -496,6 +510,7 @@ def reset_daily_lock():
     account[
         "trading_locked"
     ] = False
+    account["trading_day"] = datetime.now(ZoneInfo(MARKET_TIMEZONE)).date().isoformat()
 
     save_account(
         account
