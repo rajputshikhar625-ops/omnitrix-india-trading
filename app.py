@@ -7,7 +7,7 @@ from research_engine import research_stock
 from scanner import scan_universe
 from ai_engine import ai_call, autonomous_research, test_ai
 from charts import candlestick_chart, oscillator_chart, volume_chart
-from paper_trading import buy, check_daily_lock, get_account, monitor_positions
+from paper_trading import buy, check_daily_lock, get_account, monitor_positions, sell
 from learning_engine import learning_report, mistakes_by_reason
 from risk_engine import build_paper_trade_plan
 
@@ -234,21 +234,26 @@ elif st.session_state.page=="AI DEPLOYED":
     paper_positions = paper_account.get("positions", {})
     st.markdown("### Open paper positions")
     if paper_positions:
-        st.dataframe(
-            pd.DataFrame([
-                {
-                    "symbol": symbol,
-                    "quantity": position["quantity"],
-                    "average_price": position["average_price"],
-                    "stop_loss": position.get("stop_loss"),
-                    "target": position.get("target"),
-                }
-                for symbol, position in paper_positions.items()
-            ]),
-            use_container_width=True,
-            hide_index=True,
-        )
-        if st.button("CHECK PAPER STOPS & TARGETS", use_container_width=True, key="paper_check_exits"):
+        for symbol, position in list(paper_positions.items()):
+            if st.button(f"EXIT {symbol} — PAPER ONLY", key=f"paper_exit_{symbol}"):
+                quote = get_price(symbol)
+                if quote is None:
+                    st.warning(f"No valid Yahoo Finance quote for {symbol}; position remains open.")
+                else:
+                    ok, message = sell(
+                        symbol,
+                        position["quantity"],
+                        quote,
+                        reason="MANUAL",
+                    )
+                    if ok:
+                        st.success(message)
+                        paper_account = get_account()
+                        paper_positions = paper_account.get("positions", {})
+                    else:
+                        st.error(message)
+
+        if paper_positions and st.button("CHECK PAPER STOPS & TARGETS", use_container_width=True, key="paper_check_exits"):
             quotes = {}
             for symbol in paper_positions:
                 quote = get_price(symbol)
@@ -268,6 +273,24 @@ elif st.session_state.page=="AI DEPLOYED":
                     st.error("Daily paper loss limit reached. New paper buys are locked for today.")
                 elif get_account().get("trading_locked"):
                     st.warning("Paper buys remain locked by the account risk state.")
+                paper_account = get_account()
+                paper_positions = paper_account.get("positions", {})
+
+    if paper_positions:
+        st.dataframe(
+            pd.DataFrame([
+                {
+                    "symbol": symbol,
+                    "quantity": position["quantity"],
+                    "average_price": position["average_price"],
+                    "stop_loss": position.get("stop_loss"),
+                    "target": position.get("target"),
+                }
+                for symbol, position in paper_positions.items()
+            ]),
+            use_container_width=True,
+            hide_index=True,
+        )
     else:
         st.caption("No open paper positions.")
 
