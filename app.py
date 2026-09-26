@@ -1,11 +1,13 @@
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from config import APP_VERSION, LOCAL_LLM_MODEL
 from market_data import market_snapshot, get_nifty_price
 from research_engine import research_stock
 from scanner import scan_universe
-from ai_engine import ai_call, autonomous_research, test_ai
+from ai_engine import ai_call, autonomous_research, autonomous_multi_research, test_ai
 from charts import candlestick_chart, oscillator_chart, volume_chart
 from paper_trading import get_account, monitor_positions
 from learning_engine import learning_report, mistakes_by_reason
@@ -50,6 +52,19 @@ if "page" not in st.session_state: st.session_state.page="MARKET"
 if "selected" not in st.session_state: st.session_state.selected="RELIANCE.NS"
 if "pkg" not in st.session_state: st.session_state.pkg=None
 if "chat" not in st.session_state: st.session_state.chat=[]
+if "market_watchlist" not in st.session_state: st.session_state.market_watchlist=["RELIANCE.NS","TCS.NS","HDFCBANK.NS","ICICIBANK.NS","INFY.NS","SBIN.NS"]
+
+
+def mini_trend_chart(frame,symbol):
+    if frame is None or frame.empty or "close" not in frame.columns: return None
+    values=pd.to_numeric(frame["close"],errors="coerce").dropna().tail(80)
+    if len(values)<2: return None
+    x=frame.loc[values.index,"datetime"] if "datetime" in frame.columns else values.index
+    up=float(values.iloc[-1])>=float(values.iloc[0])
+    color="#36d9a0" if up else "#ff667a"
+    fig=go.Figure(go.Scatter(x=x,y=values,mode="lines",line={"color":color,"width":2},fill="tozeroy",fillcolor="rgba(54,217,160,.10)" if up else "rgba(255,102,122,.10)",hovertemplate="%{x}<br>₹%{y:,.2f}<extra>"+symbol.replace(".NS","")+"</extra>"))
+    fig.update_layout(height=135,margin={"l":0,"r":0,"t":4,"b":0},paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",showlegend=False,xaxis={"visible":False,"fixedrange":True},yaxis={"visible":False,"fixedrange":True})
+    return fig
 
 st.markdown(f'<div class="hero"><div class="kicker">OMNITRIX INTELLIGENCE TERMINAL</div><div class="title">OMNITRIX</div><div class="subtitle">Indian cash-equity research • pattern intelligence • local AI • paper execution</div><div style="margin-top:9px"><span class="status">LLaMA {LOCAL_LLM_MODEL} ONLINE</span> <span class="subtitle"> &nbsp; F&O OFF &nbsp;•&nbsp; LIVE ORDERS OFF &nbsp;•&nbsp; PAPER MODE</span></div></div>',unsafe_allow_html=True)
 
@@ -81,14 +96,14 @@ elif st.session_state.page=="AI":
         prompt=st.chat_input("Ask about a setup, pattern, news reaction, exit rule or research question")
         if prompt:
             st.session_state.chat.append({"role":"user","content":prompt})
-            try: ans=ai_call(prompt+"\nAnswer as an evidence-first trading research assistant. Do not place orders.")
+            try: ans=ai_call(prompt+"\nAnswer as an evidence-first trading research assistant. Do not place orders.",provider="LOCAL")
             except Exception as e: ans="AI error: "+str(e)
             st.session_state.chat.append({"role":"assistant","content":ans}); st.rerun()
     with right:
         st.markdown('<div class="bento"><div class="label">PATTERN MEMORY</div><div class="value">Human → Rule</div><div class="sub">Describe your own trading pattern and OMNITRIX converts it into testable conditions.</div></div>',unsafe_allow_html=True)
         p=st.text_area("Pattern description","Example: breakout + volume expansion + positive news + EMA trend.")
         if st.button("CONVERT TO RULE",use_container_width=True):
-            try: st.write(ai_call("Convert this trading idea into deterministic conditions, confirmation, invalidation, exit and risk rules. Do not invent evidence.\n"+p))
+            try: st.write(ai_call("Convert this trading idea into deterministic conditions, confirmation, invalidation, exit and risk rules. Do not invent evidence.\n"+p,provider="LOCAL"))
             except Exception as e: st.error(str(e))
 
 elif st.session_state.page=="RESEARCHER":
@@ -120,7 +135,7 @@ elif st.session_state.page=="RESEARCHER":
         st.markdown("### Recent YFinance news")
         for n in p["news"][:10]: st.markdown(f"**{n['title']}** — {n['publisher']}  <span class='subtitle'>{n['published']}</span>",unsafe_allow_html=True)
         if st.button("AI DEEP RESEARCH",use_container_width=True):
-            with st.spinner("LLaMA comparing news + price + chart + historical pattern evidence..."): st.session_state.report=autonomous_research(p)
+            with st.spinner("LLaMA comparing news + price + chart + historical pattern evidence..."): st.session_state.report=autonomous_research(p,provider="LOCAL")
         if st.session_state.get("report"): st.markdown(st.session_state.report)
 
 elif st.session_state.page=="SCANNER":
@@ -135,31 +150,135 @@ elif st.session_state.page=="SCANNER":
         st.markdown("### Pattern shortlist")
         top=r.head(10)
         st.dataframe(top[["symbol","price","score","pattern","rsi","volume_ratio","adx"]],use_container_width=True,hide_index=True)
-        if st.button("SEND TOP 5 TO AI",use_container_width=True):
-            reports=[]
-            for s in top.head(5)["symbol"]:
-                try: reports.append(autonomous_research(research_stock(s)))
-                except Exception as e: reports.append(f"{s}: {e}")
-            st.session_state.scan_ai="\n\n---\n\n".join(reports)
+        if st.button("SEND TOP 5 TO LOCAL AI",use_container_width=True):
+            symbols=top.head(5)["symbol"].tolist()
+            package_map={}
+            with st.spinner("Collecting the shortlist in parallel for one local AI comparison…"):
+                with ThreadPoolExecutor(max_workers=min(4,len(symbols))) as pool:
+                    futures={pool.submit(research_stock,s):s for s in symbols}
+                    for future in as_completed(futures):
+                        symbol=futures[future]
+                        try: package_map[symbol]=future.result()
+                        except Exception as error: package_map[symbol]={"symbol":symbol,"technical":{},"fundamentals":{},"levels":{},"news":[],"patterns":[]}
+                try:
+                    ordered=[package_map[s] for s in symbols if s in package_map]
+                    st.session_state.scan_ai=autonomous_multi_research(ordered,provider="LOCAL")
+                except Exception as error:
+                    st.session_state.scan_ai=f"Local shortlist analysis failed: {error}"
         if st.session_state.get("scan_ai"): st.markdown(st.session_state.scan_ai)
 
 elif st.session_state.page=="AI DEPLOYED":
-    st.markdown('<div class="section">AI Deployed — Decision Engine</div>',unsafe_allow_html=True)
-    st.markdown('<div class="warn">AUTONOMOUS LIVE TRADING IS NOT ACTIVE. The decision pipeline is being built and tested in paper mode only.</div>',unsafe_allow_html=True)
-    c=st.columns(4)
-    for col,l,v,s in zip(c,["NEWS","PRICE","CHART","RISK"],["Signal","Momentum","Structure","Hard gate"],["YFinance headlines","current movement","indicators + patterns","stop / loss limit"]):
-        col.markdown(f'<div class="bento"><div class="label">{l}</div><div class="value">{v}</div><div class="sub">{s}</div></div>',unsafe_allow_html=True)
-    selected=st.selectbox("AI focus stock",list(STOCKS),format_func=lambda s:f"{STOCKS[s]} • {s}",key="deploy_stock")
-    if st.button("RUN DECISION SIMULATION",use_container_width=True):
-        with st.spinner("Comparing news + current price + chart + historical pattern..."):
-            p=research_stock(selected); st.session_state.deploy_pkg=p
-            st.session_state.deploy_report=autonomous_research(p)
-    p=st.session_state.get("deploy_pkg")
-    if p:
-        nm=p.get("news_match",{}); t=p["technical"]
-        c=st.columns(3)
-        c[0].metric("NEWS",nm.get("bias","NEUTRAL")); c[1].metric("PRICE",f"₹{t.get('close',0):,.2f}"); c[2].metric("PATTERN",p["patterns"][0]["pattern"] if p["patterns"] else "NONE")
-        if st.session_state.get("deploy_report"): st.markdown(st.session_state.deploy_report)
+    st.markdown('<div class="section">AI Deployed — Multi-stock Decision Desk</div>',unsafe_allow_html=True)
+    st.markdown('<div class="warn">PAPER RESEARCH ONLY. The pipeline reads market evidence and runs local AI analysis. It does not send broker orders or provide external notifications.</div>',unsafe_allow_html=True)
+    status_cols=st.columns(4)
+    for col,label,value,detail in zip(status_cols,["NEWS","PRICE","CHART","RISK"],["Headlines","Quote snapshot","Trend + pattern","Hard gate"],["stock-linked feed","provider may be delayed","technical context","live orders disabled"]):
+        col.markdown(f'<div class="bento"><div class="label">{label}</div><div class="value">{value}</div><div class="sub">{detail}</div></div>',unsafe_allow_html=True)
+
+    selected=st.multiselect("AI focus list · up to 6 stocks",list(STOCKS),default=st.session_state.market_watchlist[:6],max_selections=6,format_func=lambda s:f"{STOCKS[s]} • {s}",key="deploy_stocks")
+    if selected!=st.session_state.get("deploy_symbols",[]):
+        st.session_state.deploy_packages=[]
+        st.session_state.deploy_report=""
+        st.session_state.deploy_symbols=list(selected)
+
+    if st.button("COLLECT MULTI-STOCK SNAPSHOT",use_container_width=True,disabled=not selected):
+        packages_by_symbol={}
+        try:
+            with st.spinner(f"Collecting quotes, news and chart evidence for {len(selected)} stocks…"):
+                quote_frame=market_snapshot(selected)
+                quotes=quote_frame.set_index("symbol")["price"].to_dict() if not quote_frame.empty else {}
+                with ThreadPoolExecutor(max_workers=min(4,len(selected))) as pool:
+                    futures={pool.submit(research_stock,symbol):symbol for symbol in selected}
+                    for future in as_completed(futures):
+                        symbol=futures[future]
+                        try:
+                            package=future.result()
+                        except Exception as error:
+                            package={"symbol":symbol,"technical":{},"fundamentals":{},"levels":{},"news":[],"history":pd.DataFrame(),"intraday":pd.DataFrame(),"patterns":[],"error":str(error)}
+                        package["live_price"]=quotes.get(symbol)
+                        packages_by_symbol[symbol]=package
+            st.session_state.deploy_packages=[packages_by_symbol[symbol] for symbol in selected]
+            st.session_state.deploy_quotes=quotes
+            st.session_state.deploy_report=""
+        except Exception as error:
+            st.error(f"Snapshot collection failed: {error}")
+
+    packages=st.session_state.get("deploy_packages",[])
+    if packages:
+        rows=[]
+        for package in packages:
+            symbol=package.get("symbol","")
+            technical=package.get("technical",{}) or {}
+            history=package.get("history",pd.DataFrame())
+            closes=history["close"].dropna() if not history.empty and "close" in history else pd.Series(dtype=float)
+            move=None
+            if len(closes)>=2:
+                base=float(closes.iloc[-6]) if len(closes)>=6 else float(closes.iloc[0])
+                move=(float(closes.iloc[-1])/base-1)*100 if base else None
+            close=package.get("live_price") or technical.get("close")
+            ema9=technical.get("ema9"); ema21=technical.get("ema21")
+            trend="DATA UNAVAILABLE"
+            if technical.get("close") is not None and ema9 is not None and ema21 is not None:
+                trend="UPTREND" if technical["close"]>ema9>ema21 else ("DOWNTREND" if technical["close"]<ema9<ema21 else "MIXED")
+            news=package.get("news",[]) or []
+            match=package.get("news_match",{}) or {}
+            pattern_list=package.get("patterns",[]) or []
+            pattern=pattern_list[0].get("pattern","NONE") if pattern_list and isinstance(pattern_list[0],dict) else "NONE"
+            rows.append({"Symbol":symbol.replace(".NS",""),"Price (₹)":round(float(close),2) if close is not None else None,"5-day move":f"{move:+.2f}%" if move is not None else "—","EMA structure":trend,"News bias":match.get("bias","NEUTRAL"),"Pattern":pattern,"RSI":round(float(technical["rsi"]),1) if technical.get("rsi") is not None else None})
+        st.markdown('<div class="section">Six-stock evidence board</div>',unsafe_allow_html=True)
+        st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
+        st.caption("5-day movement is historical; quotes may be delayed. Trend and news labels summarize supplied evidence and are not price forecasts.")
+        st.markdown('<div class="section">Chart + headline by stock</div>',unsafe_allow_html=True)
+        for row_start in range(0,len(packages),3):
+            cols=st.columns(3)
+            for col,package in zip(cols,packages[row_start:row_start+3]):
+                symbol=package.get("symbol","")
+                technical=package.get("technical",{}) or {}
+                live_price=package.get("live_price") or technical.get("close")
+                match=package.get("news_match",{}) or {}
+                news=package.get("news",[]) or []
+                with col:
+                    st.markdown(f'<div class="bento"><div class="label">{STOCKS.get(symbol,symbol)} · {symbol.replace(".NS","")}</div><div class="value">₹{float(live_price):,.2f}</div><div class="sub">News tone: {match.get("bias","NEUTRAL")} · Pattern: {(package.get("patterns") or [{}])[0].get("pattern","NONE")}</div></div>' if live_price is not None else f'<div class="bento"><div class="label">{STOCKS.get(symbol,symbol)}</div><div class="value">QUOTE UNAVAILABLE</div><div class="sub">Check the market data connection.</div></div>',unsafe_allow_html=True)
+                    chart_frame=package.get("intraday")
+                    if chart_frame is None or chart_frame.empty: chart_frame=package.get("history")
+                    chart=mini_trend_chart(chart_frame,symbol)
+                    if chart is not None: st.plotly_chart(chart,use_container_width=True,config={"displayModeBar":False},key="deploy_chart_"+symbol)
+                    if news:
+                        headline=news[0]
+                        st.markdown("**Latest linked headline**")
+                        st.write(headline.get("title","Headline unavailable"))
+                        st.caption(" • ".join(x for x in [headline.get("publisher",""),headline.get("published","")] if x))
+                        if headline.get("url"): st.markdown(f"[Open source]({headline['url']})")
+                    else:
+                        st.caption("No recent headline returned for this stock.")
+
+        with st.expander("Price alerts · checked against the collected quote snapshot",expanded=False):
+            st.caption("Set per-stock target and stop levels. Alerts appear here after a snapshot is collected; no push, email or broker actions are sent.")
+            alert_hits=[]
+            quotes=st.session_state.get("deploy_quotes",{})
+            stored=st.session_state.setdefault("deploy_alert_levels",{})
+            for symbol in [p.get("symbol") for p in packages]:
+                price=quotes.get(symbol)
+                saved=stored.get(symbol,{})
+                ac=st.columns([1.5,1,1])
+                ac[0].markdown(f"**{symbol.replace('.NS','')}**  \n"+(f"₹{price:,.2f}" if price is not None else "Price unavailable"))
+                target=ac[1].number_input("Target ₹",min_value=0.0,value=float(saved.get("target",0.0)),step=1.0,key="deploy_target_"+symbol,label_visibility="collapsed")
+                stop=ac[2].number_input("Stop ₹",min_value=0.0,value=float(saved.get("stop",0.0)),step=1.0,key="deploy_stop_"+symbol,label_visibility="collapsed")
+                stored[symbol]={"target":target,"stop":stop}
+                if price is not None and target>0 and price>=target: alert_hits.append(f"{symbol}: target reached at ₹{price:,.2f}")
+                if price is not None and stop>0 and price<=stop: alert_hits.append(f"{symbol}: stop level reached at ₹{price:,.2f}")
+            for alert in alert_hits: st.warning(alert)
+            if not alert_hits: st.caption("No configured levels were reached by this quote snapshot.")
+
+        if st.button("RUN LOCAL OLLAMA COMPARISON",use_container_width=True):
+            try:
+                with st.spinner("Local Ollama is comparing evidence for all selected stocks…"):
+                    st.session_state.deploy_report=autonomous_multi_research(packages,provider="LOCAL")
+            except Exception as error:
+                st.error(f"Local model analysis failed: {error}")
+        if st.session_state.get("deploy_report"):
+            st.markdown('<div class="section">Local AI comparison</div>',unsafe_allow_html=True)
+            st.markdown(st.session_state.deploy_report)
+
     st.markdown("### Self-learning / mistake review")
     lr=learning_report()
     c=st.columns(4)
