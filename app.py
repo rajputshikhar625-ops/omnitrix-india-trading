@@ -42,6 +42,43 @@ div[data-testid="stTabs"] button{color:#8fa5b9!important}
 .signal .body{font-size:13px;color:#9eb0c0;margin-top:7px;line-height:1.5}
 .status{display:inline-block;border:1px solid #245a47;border-radius:20px;padding:4px 10px;color:#36d9a0;background:#071912;font-size:11px;font-weight:800}
 .warn{border:1px solid #5a4b20;background:#171306;border-radius:10px;padding:11px;color:#e5c36b}
+
+@keyframes omniPageEnter {
+  from { opacity: 0; transform: translateY(10px); filter: blur(2px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+@keyframes omniCardEnter {
+  from { opacity: 0; transform: translateY(8px) scale(.992); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.block-container { animation: omniPageEnter 420ms cubic-bezier(.2,.7,.2,1) both; }
+.hero { animation: omniCardEnter 480ms cubic-bezier(.2,.7,.2,1) both; }
+.bento,.signal,[data-testid="stMetric"],[data-testid="stDataFrame"] {
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  animation: omniCardEnter 460ms cubic-bezier(.2,.7,.2,1) both;
+}
+.bento:hover,.signal:hover,[data-testid="stMetric"]:hover {
+  transform: translateY(-2px);
+  border-color: #2c6687;
+  box-shadow: 0 12px 28px rgba(0,0,0,.22);
+}
+.stButton>button {
+  transition: transform 160ms ease, background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+.stButton>button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(54,199,255,.13);
+}
+[data-testid="stPlotlyChart"] { animation: omniCardEnter 520ms ease both; }
+@media (prefers-reduced-motion: reduce) {
+  *,*::before,*::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 </style>
 """,unsafe_allow_html=True)
 
@@ -71,7 +108,7 @@ st.markdown(f'<div class="hero"><div class="kicker">OMNITRIX INTELLIGENCE TERMIN
 nav=st.columns(5)
 for i,name in enumerate(["MARKET","AI","RESEARCHER","SCANNER","AI DEPLOYED"]):
     active=" ▪" if st.session_state.page==name else ""
-    if nav[i].button(name+active,use_container_width=True,key="nav_"+name):
+    if nav[i].button(name+active,width="stretch",key="nav_"+name):
         st.session_state.page=name; st.rerun()
 
 if st.session_state.page=="MARKET":
@@ -82,90 +119,242 @@ if st.session_state.page=="MARKET":
     for col,(l,v,s) in zip(c,cards):
         col.markdown(f'<div class="bento"><div class="label">{l}</div><div class="value">{v}</div><div class="sub">{s}</div></div>',unsafe_allow_html=True)
     st.markdown('<div class="section">Market Pulse</div>',unsafe_allow_html=True)
-    if st.button("REFRESH MARKET SNAPSHOT",use_container_width=True):
+    if st.button("REFRESH MARKET SNAPSHOT",width="stretch"):
         st.cache_data.clear(); st.rerun()
     snap=market_snapshot(list(STOCKS)[:50])
-    if not snap.empty: st.dataframe(snap,use_container_width=True,hide_index=True)
+    if not snap.empty: st.dataframe(snap,width="stretch",hide_index=True)
     st.caption("Price source: Groww LTP when configured; otherwise YFinance fallback. Exchange-grade live feed will be added only after deliberate activation.")
 
 elif st.session_state.page=="AI":
     st.markdown('<div class="section">AI Workspace</div>',unsafe_allow_html=True)
-    left,right=st.columns([1.7,1])
+    st.caption(f"Local model · {LOCAL_LLM_MODEL} · Questions run only when submitted")
+    left,right=st.columns([1.7,1],gap="large")
     with left:
-        for m in st.session_state.chat[-12:]: st.chat_message(m["role"]).markdown(m["content"])
-        prompt=st.chat_input("Ask about a setup, pattern, news reaction, exit rule or research question")
-        if prompt:
-            st.session_state.chat.append({"role":"user","content":prompt})
-            try: ans=ai_call(prompt+"\nAnswer as an evidence-first trading research assistant. Do not place orders.",provider="LOCAL")
-            except Exception as e: ans="AI error: "+str(e)
-            st.session_state.chat.append({"role":"assistant","content":ans}); st.rerun()
+        with st.container(border=True):
+            st.markdown("**Research conversation**")
+            st.caption("Use the supplied market evidence for stock-specific analysis. OMNITRIX does not place orders.")
+            if not st.session_state.chat:
+                with st.chat_message("assistant"):
+                    st.markdown("I can help compare setups, chart patterns, news reactions and exit rules. Ask a question to begin.")
+            for message in st.session_state.chat[-12:]:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+            prompt=st.chat_input("Ask about a setup, pattern, news reaction, exit rule or research question")
+            if prompt:
+                st.session_state.chat.append({"role":"user","content":prompt})
+                prior="\n".join(f'{m["role"]}: {m["content"]}' for m in st.session_state.chat[-8:])
+                try:
+                    with st.spinner("Local model is preparing a research response…"):
+                        ans=ai_call(prior+"\nAnswer as an evidence-first Indian equity research assistant. Separate supplied facts from interpretation, state missing data, and do not place orders.",provider="LOCAL")
+                except Exception as e:
+                    ans="Local AI is unavailable: "+str(e)
+                st.session_state.chat.append({"role":"assistant","content":ans})
+                st.rerun()
     with right:
-        st.markdown('<div class="bento"><div class="label">PATTERN MEMORY</div><div class="value">Human → Rule</div><div class="sub">Describe your own trading pattern and OMNITRIX converts it into testable conditions.</div></div>',unsafe_allow_html=True)
-        p=st.text_area("Pattern description","Example: breakout + volume expansion + positive news + EMA trend.")
-        if st.button("CONVERT TO RULE",use_container_width=True):
-            try: st.write(ai_call("Convert this trading idea into deterministic conditions, confirmation, invalidation, exit and risk rules. Do not invent evidence.\n"+p,provider="LOCAL"))
-            except Exception as e: st.error(str(e))
+        st.markdown('<div class="bento"><div class="label">PATTERN MEMORY</div><div class="value">Human → Rule</div><div class="sub">Describe your trading pattern and convert it into testable conditions.</div></div>',unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("**Rule draft**")
+            st.caption("A draft is for review. Saving it does not activate paper or live execution.")
+            p=st.text_area("Pattern description","Example: breakout + volume expansion + positive news + EMA trend.",key="ai_pattern_description")
+            if st.button("CONVERT TO RULE",type="primary",width="stretch",key="convert_pattern_rule"):
+                try:
+                    with st.spinner("Local model is structuring the rule…"):
+                        rule=ai_call("Convert this idea into deterministic entry conditions, confirmation, invalidation, exit and risk rules. Return a concise checklist. Do not create a trade or claim the rule is validated.\n"+p,provider="LOCAL")
+                    st.session_state.ai_rule_draft=rule
+                except Exception as e:
+                    st.error(str(e))
+            if st.session_state.get("ai_rule_draft"):
+                st.markdown(st.session_state.ai_rule_draft)
 
 elif st.session_state.page=="RESEARCHER":
-    st.markdown('<div class="section">Researcher</div>',unsafe_allow_html=True)
-    symbols=list(STOCKS)
-    selected=st.selectbox("Security",symbols,index=symbols.index(st.session_state.selected),format_func=lambda s:f"{STOCKS[s]}  •  {s}")
+    st.markdown('<div class="section">Security Researcher</div>',unsafe_allow_html=True)
+    st.caption("Price action, fundamentals, technical state, historical patterns and source-linked news in one research view.")
+    selector_col,action_col=st.columns([3,1],vertical_alignment="bottom")
+    with selector_col:
+        symbols=list(STOCKS)
+        selected=st.selectbox("Security",symbols,index=symbols.index(st.session_state.selected),format_func=lambda s:f"{STOCKS[s]}  •  {s}",key="research_security")
     st.session_state.selected=selected
-    if st.button("LOAD RESEARCH PACKAGE",use_container_width=True):
-        with st.spinner("Loading 2Y history + intraday chart + indicators + YFinance news..."): st.session_state.pkg=research_stock(selected)
-    p=st.session_state.pkg
-    if p:
-        t=p["technical"]; q=st.columns(6)
-        for col,l,k in zip(q,["PRICE","RSI","ADX","VOL RATIO","ATR","PATTERN"],["close","rsi","adx","volume_ratio","atr",None]):
-            v=p["patterns"][0]["pattern"] if k is None and p["patterns"] else ("NO CLEAR" if k is None else t.get(k))
-            col.metric(l, v if isinstance(v,str) else f"{v:.2f}" if v is not None else "DATA")
-        chart_df=p["intraday"] if not p["intraday"].empty else p["history"]
-        st.plotly_chart(candlestick_chart(chart_df,selected),use_container_width=True)
-        x,y=st.columns(2)
-        with x: st.plotly_chart(volume_chart(chart_df),use_container_width=True)
-        with y: st.plotly_chart(oscillator_chart(chart_df,["rsi","stoch_k","stoch_d"],"Momentum"),use_container_width=True)
-        st.markdown('<div class="section">Evidence Matrix</div>',unsafe_allow_html=True)
-        sig=st.columns(3)
-        nm=p.get("news_match",{})
-        with sig[0]: st.markdown(f'<div class="signal"><div class="head">NEWS</div><div class="body">{nm.get("bias","NEUTRAL")} • score {nm.get("score",0)}<br>{nm.get("headline","No recent headline")}</div></div>',unsafe_allow_html=True)
-        with sig[1]: st.markdown(f'<div class="signal"><div class="head">PRICE</div><div class="body">₹{t.get("close",0):,.2f}<br>RSI {t.get("rsi",0):.1f} • Volume {t.get("volume_ratio",0):.2f}x</div></div>',unsafe_allow_html=True)
-        with sig[2]: st.markdown(f'<div class="signal"><div class="head">CHART</div><div class="body">{", ".join(x["pattern"] for x in p.get("patterns",[])[:4]) or "No clear pattern"}</div></div>',unsafe_allow_html=True)
-        st.markdown("### Historical pattern behaviour")
-        st.dataframe(p["pattern_history"],use_container_width=True,hide_index=True)
-        st.markdown("### Recent YFinance news")
-        for n in p["news"][:10]: st.markdown(f"**{n['title']}** — {n['publisher']}  <span class='subtitle'>{n['published']}</span>",unsafe_allow_html=True)
-        if st.button("AI DEEP RESEARCH",use_container_width=True):
-            with st.spinner("LLaMA comparing news + price + chart + historical pattern evidence..."): st.session_state.report=autonomous_research(p,provider="LOCAL")
-        if st.session_state.get("report"): st.markdown(st.session_state.report)
+    with action_col:
+        load_package=st.button("LOAD RESEARCH PACKAGE",type="primary",width="stretch",key="load_research_package")
+    if load_package:
+        try:
+            with st.spinner("Loading price history, intraday data, indicators, patterns and news…"):
+                st.session_state.pkg=research_stock(selected)
+                st.session_state.report=""
+        except Exception as error:
+            st.error(f"Research package could not be loaded: {error}")
+
+    package=st.session_state.pkg
+    if not package or package.get("symbol")!=selected:
+        st.info("Choose a security and load its research package to populate this page from the configured data sources.")
+    else:
+        technical=package.get("technical",{}) or {}
+        fundamentals=package.get("fundamentals",{}) or {}
+        patterns=package.get("patterns",[]) or []
+        news=package.get("news",[]) or []
+        quality="HIGH" if technical.get("close") is not None and news and not fundamentals.get("error") else "PARTIAL"
+        st.caption(f"{STOCKS[selected]} · {selected.replace('.NS','')} · Quality: {quality} · Quote may be delayed")
+        metric_cols=st.columns(5)
+        metrics=[("LAST PRICE",technical.get("close")),("RSI · 14",technical.get("rsi")),("ADX · 14",technical.get("adx")),("VOLUME RATIO",technical.get("volume_ratio")),("PATTERN",patterns[0].get("pattern") if patterns else "NO CLEAR SETUP")]
+        for col,(label,value) in zip(metric_cols,metrics):
+            shown=value if isinstance(value,str) else f"{float(value):,.2f}" if value is not None else "DATA"
+            col.metric(label,shown)
+
+        chart_col,detail_col=st.columns([1.75,1],gap="large")
+        chart_frame=package.get("intraday")
+        if chart_frame is None or chart_frame.empty:
+            chart_frame=package.get("history")
+        with chart_col:
+            with st.container(border=True):
+                st.markdown("**Price & volume**")
+                st.caption("Intraday candles when available, with daily history as fallback.")
+                if chart_frame is not None and not chart_frame.empty:
+                    st.plotly_chart(candlestick_chart(chart_frame,selected),width="stretch",config={"displayModeBar":False},key="research_candles_"+selected)
+                    st.plotly_chart(volume_chart(chart_frame),width="stretch",config={"displayModeBar":False},key="research_volume_"+selected)
+                else:
+                    st.info("Price history is unavailable for this security.")
+        with detail_col:
+            with st.container(border=True):
+                st.markdown("**Technical state**")
+                technical_rows=[
+                    ("EMA 9 / 21", "Bullish" if technical.get("ema9") is not None and technical.get("ema21") is not None and technical["ema9"]>technical["ema21"] else "Mixed / unavailable"),
+                    ("RSI", f"{float(technical['rsi']):.1f}" if technical.get("rsi") is not None else "Unavailable"),
+                    ("MACD", "Positive" if technical.get("macd") is not None and technical.get("macd_signal") is not None and technical["macd"]>technical["macd_signal"] else "Mixed / unavailable"),
+                    ("Volume", f"{float(technical['volume_ratio']):.2f}× avg" if technical.get("volume_ratio") is not None else "Unavailable"),
+                    ("ATR", f"{float(technical['atr']):.2f}" if technical.get("atr") is not None else "Unavailable"),
+                ]
+                st.dataframe(pd.DataFrame(technical_rows,columns=["Indicator","Reading"]),width="stretch",hide_index=True)
+            with st.container(border=True):
+                st.markdown("**Risk register**")
+                levels=package.get("levels",{}) or {}
+                for key,label in [("s1","Support 1"),("pivot","Pivot"),("r1","Resistance 1")]:
+                    value=levels.get(key)
+                    st.caption(f"{label} · ₹{float(value):,.2f}" if isinstance(value,(int,float)) else f"{label} · unavailable")
+                st.caption(f"Sector · {fundamentals.get('sector') or 'unavailable'}")
+                st.caption(f"Debt / equity · {fundamentals.get('debtToEquity') if fundamentals.get('debtToEquity') is not None else 'unavailable'}")
+
+        with st.container(border=True):
+            st.markdown("**Evidence matrix · news, price and chart**")
+            match=package.get("news_match",{}) or {}
+            evidence=st.columns(3)
+            evidence[0].markdown(f'<div class="signal"><div class="head">NEWS</div><div class="body">{match.get("bias","NEUTRAL")} · score {match.get("score",0)}<br>{match.get("headline","No recent headline")}</div></div>',unsafe_allow_html=True)
+            evidence[1].markdown(f'<div class="signal"><div class="head">PRICE</div><div class="body">₹{technical.get("close",0):,.2f}<br>RSI {technical.get("rsi",0):.1f} · Volume {technical.get("volume_ratio",0):.2f}×</div></div>',unsafe_allow_html=True)
+            evidence[2].markdown(f'<div class="signal"><div class="head">PATTERN</div><div class="body">{", ".join(p.get("pattern","") for p in patterns[:3]) or "No clear pattern"}<br>Historical sample: {len(package.get("pattern_history",[]))}</div></div>',unsafe_allow_html=True)
+
+        lower_left,lower_right=st.columns([1.35,1],gap="large")
+        with lower_left:
+            with st.container(border=True):
+                st.markdown("**Historical pattern behaviour**")
+                history_table=package.get("pattern_history",pd.DataFrame())
+                if isinstance(history_table,pd.DataFrame) and not history_table.empty:
+                    st.dataframe(history_table,width="stretch",hide_index=True)
+                else:
+                    st.caption("No comparable historical pattern sample was returned.")
+            with st.container(border=True):
+                st.markdown("**Recent news & sources**")
+                if news:
+                    for item in news[:6]:
+                        title=item.get("title","Headline unavailable")
+                        link=item.get("url")
+                        st.markdown(f"**[{title}]({link})**" if link else f"**{title}**")
+                        st.caption(" · ".join(x for x in [item.get("publisher","News"),item.get("published","")] if x))
+                else:
+                    st.caption("No recent headlines were returned.")
+        with lower_right:
+            with st.container(border=True):
+                st.markdown("**Fundamentals**")
+                rows=[("Industry",fundamentals.get("industry")),("Trailing P/E",fundamentals.get("trailingPE")),("Revenue growth",fundamentals.get("revenueGrowth")),("Profit margin",fundamentals.get("profitMargins")),("Return on equity",fundamentals.get("returnOnEquity"))]
+                st.dataframe(pd.DataFrame([(k,v if v is not None else "Unavailable") for k,v in rows],columns=["Metric","Value"]),width="stretch",hide_index=True)
+
+        if st.button("AI DEEP RESEARCH",type="primary",width="stretch",key="research_ai_deep"):
+            try:
+                with st.spinner("Local model is comparing news, price, chart and pattern evidence…"):
+                    st.session_state.report=autonomous_research(package,provider="LOCAL")
+            except Exception as error:
+                st.error(f"Deep research failed: {error}")
+        if st.session_state.get("report"):
+            with st.container(border=True):
+                st.markdown("**Local AI research note**")
+                st.markdown(st.session_state.report)
 
 elif st.session_state.page=="SCANNER":
-    st.markdown('<div class="section">50-Stock Scanner</div>',unsafe_allow_html=True)
-    st.caption("Deterministic filtering first. AI is used only after the shortlist.")
-    n=st.slider("Universe size",20,min(80,len(STOCKS)),50)
-    if st.button("SCAN NOW",use_container_width=True):
-        with st.spinner(f"Parallel scan of {n} stocks..."): st.session_state.scan=scan_universe(list(STOCKS),n)
-    r=st.session_state.get("scan",pd.DataFrame())
-    if not r.empty:
-        st.dataframe(r,use_container_width=True,hide_index=True)
-        st.markdown("### Pattern shortlist")
-        top=r.head(10)
-        st.dataframe(top[["symbol","price","score","pattern","rsi","volume_ratio","adx"]],use_container_width=True,hide_index=True)
-        if st.button("SEND TOP 5 TO LOCAL AI",use_container_width=True):
-            symbols=top.head(5)["symbol"].tolist()
+    st.markdown('<div class="section">Market Scanner</div>',unsafe_allow_html=True)
+    st.caption("Filter first, review transparent indicator scores and send only a small shortlist to local AI.")
+    filter_cols=st.columns([1.15,1,1,1],gap="medium")
+    universe=filter_cols[0].selectbox("Universe",["NIFTY focus list","Full coverage"],key="scanner_universe")
+    universe_symbols=list(STOCKS)[:50] if universe=="NIFTY focus list" else list(STOCKS)
+    max_size=min(80,len(universe_symbols))
+    default_size=min(50,max_size)
+    scan_size=filter_cols[1].slider("Scan size",min(20,max_size),max_size,default_size,step=5,key="scanner_size")
+    min_score=filter_cols[2].slider("Minimum score",-10,110,30,step=5,key="scanner_score_floor")
+    setup_filter=filter_cols[3].selectbox("Setup filter",["All setups","Breakout","Trend","Pullback","Other"],key="scanner_pattern_filter")
+    if st.button("SCAN UNIVERSE",type="primary",width="stretch",key="scanner_run"):
+        with st.spinner(f"Parallel scan across {scan_size} securities…"):
+            st.session_state.scan=scan_universe(universe_symbols,scan_size)
+        st.session_state.scan_runs=st.session_state.get("scan_runs",0)+1
+
+    result=st.session_state.get("scan",pd.DataFrame())
+    if not result.empty:
+        filtered=result.copy()
+        if "score" in filtered:
+            filtered=filtered[filtered["score"]>=min_score]
+        if "pattern" in filtered:
+            if setup_filter=="Breakout":
+                filtered=filtered[filtered["pattern"].astype(str).str.contains("BREAKOUT",case=False,na=False)]
+            elif setup_filter=="Trend":
+                filtered=filtered[filtered["pattern"].astype(str).str.contains("TREND|EMA_CROSS_UP",case=False,regex=True,na=False)]
+            elif setup_filter=="Pullback":
+                filtered=filtered[filtered["pattern"].astype(str).str.contains("PULLBACK",case=False,na=False)]
+            elif setup_filter=="Other":
+                filtered=filtered[~filtered["pattern"].astype(str).str.contains("BREAKOUT|TREND|EMA_CROSS_UP|PULLBACK",case=False,regex=True,na=False)]
+
+        stats=st.columns(4)
+        stats[0].metric("SHORTLIST",len(filtered))
+        stats[1].metric("AVG SCORE",f"{filtered['score'].mean():.0f}/110" if not filtered.empty and "score" in filtered else "—")
+        stats[2].metric("BREAKOUTS",int(filtered["pattern"].astype(str).str.contains("BREAKOUT",case=False,na=False).sum()) if not filtered.empty and "pattern" in filtered else 0)
+        stats[3].metric("SCAN RUNS",st.session_state.get("scan_runs",0))
+
+        result_col,chart_col=st.columns([1.7,1],gap="large")
+        with result_col:
+            with st.container(border=True):
+                st.markdown("**Shortlist results**")
+                st.caption("Scores combine indicator checks and the detected pattern. Candidates require review.")
+                shown=[c for c in ["symbol","price","score","pattern","rsi","volume_ratio","adx"] if c in filtered.columns]
+                st.dataframe(filtered[shown],width="stretch",hide_index=True,height=390)
+        with chart_col:
+            with st.container(border=True):
+                st.markdown("**Score distribution**")
+                if not filtered.empty and "score" in filtered and "symbol" in filtered:
+                    top=filtered.head(12).iloc[::-1]
+                    figure=go.Figure(go.Bar(x=top["score"],y=top["symbol"].astype(str).str.replace(".NS","",regex=False),orientation="h",marker={"color":top["score"],"colorscale":[[0,"#21425e"],[.65,"#1677ff"],[1,"#36d9a0"]],"cmin":-10,"cmax":110,"showscale":False},hovertemplate="%{y}<br>Score %{x}/110<extra></extra>"))
+                    figure.update_layout(height=360,margin={"l":4,"r":8,"t":8,"b":8},template="plotly_dark",paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",xaxis={"range":[-10,110],"title":"Technical + pattern score"},yaxis={"autorange":"reversed"})
+                    st.plotly_chart(figure,width="stretch",config={"displayModeBar":False},key="scanner_score_distribution")
+                else:
+                    st.info("No securities match these filters. Lower the score threshold or change the setup filter.")
+                st.caption("Historical technical evidence is not a price forecast.")
+        if not filtered.empty and st.button("SEND TOP 5 TO LOCAL AI",type="primary",width="stretch",key="scanner_ai_shortlist"):
+            symbols=filtered.head(5)["symbol"].tolist()
             package_map={}
             with st.spinner("Collecting the shortlist in parallel for one local AI comparison…"):
                 with ThreadPoolExecutor(max_workers=min(4,len(symbols))) as pool:
                     futures={pool.submit(research_stock,s):s for s in symbols}
                     for future in as_completed(futures):
                         symbol=futures[future]
-                        try: package_map[symbol]=future.result()
-                        except Exception as error: package_map[symbol]={"symbol":symbol,"technical":{},"fundamentals":{},"levels":{},"news":[],"patterns":[]}
+                        try:
+                            package_map[symbol]=future.result()
+                        except Exception as error:
+                            package_map[symbol]={"symbol":symbol,"technical":{},"fundamentals":{},"levels":{},"news":[],"patterns":[],"error":str(error)}
                 try:
                     ordered=[package_map[s] for s in symbols if s in package_map]
                     st.session_state.scan_ai=autonomous_multi_research(ordered,provider="LOCAL")
                 except Exception as error:
                     st.session_state.scan_ai=f"Local shortlist analysis failed: {error}"
-        if st.session_state.get("scan_ai"): st.markdown(st.session_state.scan_ai)
+        if st.session_state.get("scan_ai"):
+            with st.container(border=True):
+                st.markdown("**Local shortlist analysis**")
+                st.markdown(st.session_state.scan_ai)
+    else:
+        st.info("Choose a universe and run a scan to see candidates ranked by price, trend, momentum, volume and chart pattern.")
 
 elif st.session_state.page=="AI DEPLOYED":
     st.markdown('<div class="section">AI Deployed — Multi-stock Decision Desk</div>',unsafe_allow_html=True)
@@ -180,7 +369,7 @@ elif st.session_state.page=="AI DEPLOYED":
         st.session_state.deploy_report=""
         st.session_state.deploy_symbols=list(selected)
 
-    if st.button("COLLECT MULTI-STOCK SNAPSHOT",use_container_width=True,disabled=not selected):
+    if st.button("COLLECT MULTI-STOCK SNAPSHOT",width="stretch",disabled=not selected):
         packages_by_symbol={}
         try:
             with st.spinner(f"Collecting quotes, news and chart evidence for {len(selected)} stocks…"):
@@ -225,7 +414,7 @@ elif st.session_state.page=="AI DEPLOYED":
             pattern=pattern_list[0].get("pattern","NONE") if pattern_list and isinstance(pattern_list[0],dict) else "NONE"
             rows.append({"Symbol":symbol.replace(".NS",""),"Price (₹)":round(float(close),2) if close is not None else None,"5-day move":f"{move:+.2f}%" if move is not None else "—","EMA structure":trend,"News bias":match.get("bias","NEUTRAL"),"Pattern":pattern,"RSI":round(float(technical["rsi"]),1) if technical.get("rsi") is not None else None})
         st.markdown('<div class="section">Six-stock evidence board</div>',unsafe_allow_html=True)
-        st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
+        st.dataframe(pd.DataFrame(rows),width="stretch",hide_index=True)
         st.caption("5-day movement is historical; quotes may be delayed. Trend and news labels summarize supplied evidence and are not price forecasts.")
         st.markdown('<div class="section">Chart + headline by stock</div>',unsafe_allow_html=True)
         for row_start in range(0,len(packages),3):
@@ -241,7 +430,7 @@ elif st.session_state.page=="AI DEPLOYED":
                     chart_frame=package.get("intraday")
                     if chart_frame is None or chart_frame.empty: chart_frame=package.get("history")
                     chart=mini_trend_chart(chart_frame,symbol)
-                    if chart is not None: st.plotly_chart(chart,use_container_width=True,config={"displayModeBar":False},key="deploy_chart_"+symbol)
+                    if chart is not None: st.plotly_chart(chart,width="stretch",config={"displayModeBar":False},key="deploy_chart_"+symbol)
                     if news:
                         headline=news[0]
                         st.markdown("**Latest linked headline**")
@@ -269,7 +458,7 @@ elif st.session_state.page=="AI DEPLOYED":
             for alert in alert_hits: st.warning(alert)
             if not alert_hits: st.caption("No configured levels were reached by this quote snapshot.")
 
-        if st.button("RUN LOCAL OLLAMA COMPARISON",use_container_width=True):
+        if st.button("RUN LOCAL OLLAMA COMPARISON",width="stretch"):
             try:
                 with st.spinner("Local Ollama is comparing evidence for all selected stocks…"):
                     st.session_state.deploy_report=autonomous_multi_research(packages,provider="LOCAL")
@@ -283,7 +472,7 @@ elif st.session_state.page=="AI DEPLOYED":
     lr=learning_report()
     c=st.columns(4)
     c[0].metric("Completed trades",lr["trades"]); c[1].metric("Win rate",f"{lr['win_rate']:.1f}%" if lr["win_rate"] is not None else "DATA"); c[2].metric("Wins",lr["wins"]); c[3].metric("Avg P&L",f"₹{lr['avg_pnl']:,.2f}" if lr["avg_pnl"] is not None else "DATA")
-    st.dataframe(mistakes_by_reason(),use_container_width=True,hide_index=True)
+    st.dataframe(mistakes_by_reason(),width="stretch",hide_index=True)
     st.caption("OMNITRIX learns by measuring paper-trade outcomes and updating the research record. It will not silently rewrite its own strategy or risk controls.")
 
 st.markdown("---")
