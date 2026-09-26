@@ -40,15 +40,15 @@ def candlestick_chart(
             )
 
     fig.update_layout(
-        height=600,
+        height=520,
         template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
         xaxis_rangeslider_visible=False,
-        margin=dict(
-            l=20,
-            r=20,
-            t=40,
-            b=20
-        )
+        margin=dict(l=10, r=10, t=30, b=10),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=10, color="#94a3b8")),
+        xaxis=dict(gridcolor="rgba(30, 58, 82, 0.4)", zerolinecolor="rgba(30, 58, 82, 0.4)"),
+        yaxis=dict(gridcolor="rgba(30, 58, 82, 0.4)", zerolinecolor="rgba(30, 58, 82, 0.4)")
     )
 
     return fig
@@ -71,20 +71,20 @@ def oscillator_chart(
                     x=df["datetime"],
                     y=df[column],
                     mode="lines",
-                    name=column.upper()
+                    name=column.upper(),
+                    line=dict(width=2)
                 )
             )
 
     fig.update_layout(
-        title=title,
-        height=300,
+        title=dict(text=title, font=dict(size=12, color="#38bdf8")),
+        height=240,
         template="plotly_dark",
-        margin=dict(
-            l=20,
-            r=20,
-            t=50,
-            b=20
-        )
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=10, t=35, b=10),
+        xaxis=dict(gridcolor="rgba(30, 58, 82, 0.4)", zerolinecolor="rgba(30, 58, 82, 0.4)"),
+        yaxis=dict(gridcolor="rgba(30, 58, 82, 0.4)", zerolinecolor="rgba(30, 58, 82, 0.4)")
     )
 
     return fig
@@ -98,14 +98,20 @@ def volume_chart(df):
         go.Bar(
             x=df["datetime"],
             y=df["volume"],
-            name="Volume"
+            name="Volume",
+            marker_color="rgba(56, 189, 248, 0.6)"
         )
     )
 
     fig.update_layout(
-        title="Volume",
-        height=280,
-        template="plotly_dark"
+        title=dict(text="Volume Analysis", font=dict(size=12, color="#38bdf8")),
+        height=220,
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=10, t=35, b=10),
+        xaxis=dict(gridcolor="rgba(30, 58, 82, 0.4)", zerolinecolor="rgba(30, 58, 82, 0.4)"),
+        yaxis=dict(gridcolor="rgba(30, 58, 82, 0.4)", zerolinecolor="rgba(30, 58, 82, 0.4)")
     )
 
     return fig

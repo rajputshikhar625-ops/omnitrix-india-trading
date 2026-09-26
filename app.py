@@ -16,169 +16,245 @@ st.set_page_config(page_title="OMNITRIX",page_icon="◈",layout="wide",initial_s
 
 st.markdown("""
 <style>
-.stApp{background:#05090f;color:#eef6ff}
-.block-container{max-width:1700px;padding:12px 28px 35px}
-header[data-testid="stHeader"]{background:transparent}
-p,span,label,h1,h2,h3,h4,h5{color:#eef6ff}
-input,textarea,[data-baseweb="select"]>div{background:#08111d!important;color:#eef6ff!important;border:1px solid #1b344d!important}
-input::placeholder,textarea::placeholder{color:#62788e!important}
-.stButton>button{height:42px;background:#091827;color:#f5fbff;border:1px solid #214967;border-radius:8px;font-weight:700;letter-spacing:.2px}
-.stButton>button:hover{background:#0d2b44;border-color:#36c7ff}
-[data-testid="stMetric"]{background:#08111d;border:1px solid #183149;border-radius:10px;padding:8px}
-[data-testid="stDataFrame"]{border:1px solid #173149;border-radius:10px}
-div[data-testid="stTabs"] button{color:#8fa5b9!important}
-.hero{background:linear-gradient(115deg,#07111c 0%,#0b2033 58%,#08131f 100%);border:1px solid #1e405b;border-radius:15px;padding:20px 24px;margin-bottom:10px;box-shadow:0 12px 40px rgba(0,0,0,.22)}
-.kicker{font-size:11px;color:#49d9ff;font-weight:800;letter-spacing:2.2px}
-.title{font-size:34px;font-weight:800;letter-spacing:1px;margin:2px 0}
-.subtitle{color:#8ea5ba;font-size:13px}
-.nav{background:#07111c;border:1px solid #173149;border-radius:10px;padding:5px;margin:8px 0 14px}
-.bento{background:linear-gradient(145deg,#081522,#0b1b2a);border:1px solid #19364e;border-radius:12px;padding:15px;min-height:105px}
-.bento .label{font-size:11px;color:#6f91aa;letter-spacing:1.2px;font-weight:800}
-.bento .value{font-size:22px;font-weight:800;margin-top:5px}
-.bento .sub{font-size:12px;color:#8298aa;margin-top:3px}
-.section{font-size:18px;font-weight:800;margin:15px 0 8px}
-.signal{background:#071522;border:1px solid #1a3a54;border-radius:12px;padding:14px;min-height:120px}
-.signal .head{font-size:12px;font-weight:800;letter-spacing:1.2px;color:#51dfff}
-.signal .body{font-size:13px;color:#9eb0c0;margin-top:7px;line-height:1.5}
-.status{display:inline-block;border:1px solid #245a47;border-radius:20px;padding:4px 10px;color:#36d9a0;background:#071912;font-size:11px;font-weight:800}
-.warn{border:1px solid #5a4b20;background:#171306;border-radius:10px;padding:11px;color:#e5c36b}
+:root {
+  --bg-primary: #05080e;
+  --bg-card: rgba(10, 21, 33, 0.72);
+  --bg-card-hover: rgba(15, 30, 48, 0.85);
+  --border-cyan: rgba(54, 199, 255, 0.22);
+  --neon-cyan: #36c7ff;
+  --neon-green: #36d9a0;
+  --neon-purple: #a855f7;
+  --text-primary: #eff7ff;
+  --text-secondary: #7e9bb5;
+}
 
-@keyframes omniPageEnter {
-  from { opacity: 0; transform: translateY(10px); filter: blur(2px); }
-  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+.stApp, [data-testid="stAppViewContainer"] {
+  background: radial-gradient(circle at 50% 0%, #0b1c2d 0%, #05080e 70%) !important;
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
-@keyframes omniCardEnter {
-  from { opacity: 0; transform: translateY(8px) scale(.992); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+
+.block-container {
+  max-width: 1740px;
+  padding: 16px 28px 40px;
+  animation: omniFadeIn 400ms cubic-bezier(.16, 1, .3, 1) both;
 }
-.block-container { animation: omniPageEnter 420ms cubic-bezier(.2,.7,.2,1) both; }
-.hero { animation: omniCardEnter 480ms cubic-bezier(.2,.7,.2,1) both; }
-.bento,.signal,[data-testid="stMetric"],[data-testid="stDataFrame"] {
-  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
-  animation: omniCardEnter 460ms cubic-bezier(.2,.7,.2,1) both;
+
+header[data-testid="stHeader"] { background: transparent !important; }
+p, span, label, h1, h2, h3, h4, h5 { color: var(--text-primary); }
+
+input, textarea, [data-baseweb="select"] > div {
+  background: rgba(8, 17, 29, 0.9) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-cyan) !important;
+  border-radius: 8px !important;
+  backdrop-filter: blur(8px);
 }
-.bento:hover,.signal:hover,[data-testid="stMetric"]:hover {
+input::placeholder, textarea::placeholder { color: #58728a !important; }
+
+/* Enhanced Button Styling with Neon Effects */
+.stButton > button {
+  height: 40px;
+  background: linear-gradient(135deg, rgba(13, 32, 48, 0.9) 0%, rgba(8, 20, 32, 0.9) 100%);
+  color: var(--text-primary);
+  border: 1px solid rgba(54, 199, 255, 0.3);
+  border-radius: 8px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-size: 11px;
+  transition: all 220ms cubic-bezier(.16, 1, .3, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.stButton > button:hover {
   transform: translateY(-2px);
-  border-color: #2c6687;
-  box-shadow: 0 12px 28px rgba(0,0,0,.22);
-}
-.stButton>button {
-  transition: transform 160ms ease, background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
-}
-.stButton>button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 8px 22px rgba(54,199,255,.13);
-}
-[data-testid="stPlotlyChart"] { animation: omniCardEnter 520ms ease both; }
-@media (prefers-reduced-motion: reduce) {
-  *,*::before,*::after {
-    animation-duration: .01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: .01ms !important;
-    scroll-behavior: auto !important;
-  }
+  border-color: var(--neon-cyan);
+  background: linear-gradient(135deg, rgba(18, 48, 72, 0.95) 0%, rgba(10, 28, 45, 0.95) 100%);
+  box-shadow: 0 0 16px rgba(54, 199, 255, 0.35), 0 6px 20px rgba(0, 0, 0, 0.4);
 }
 
+.stButton > button[kind="primary"] {
+  background: linear-gradient(135deg, #0284c7 0%, #0d9488 100%) !important;
+  border: 1px solid #38bdf8 !important;
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.25);
+}
 
-/* Terminal shell tuned to the five Figma workspaces */
-.stApp, [data-testid="stAppViewContainer"] { background: #05090e; }
-.block-container { max-width: 1740px; padding: 18px 26px 38px; }
+.stButton > button[kind="primary"]:hover {
+  background: linear-gradient(135deg, #0369a1 0%, #0f766e 100%) !important;
+  box-shadow: 0 0 22px rgba(56, 189, 248, 0.5);
+}
+
+/* Glassmorphism Cards & Bentos */
+.bento, .signal, [data-testid="stMetric"], [data-testid="stDataFrame"], [data-testid="stVerticalBlockBorderWrapper"] {
+  background: var(--bg-card) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-cyan) !important;
+  border-radius: 12px !important;
+  transition: all 250ms ease;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  animation: omniCardSlide 450ms cubic-bezier(.16, 1, .3, 1) both;
+}
+
+.bento:hover, .signal:hover, [data-testid="stMetric"]:hover {
+  transform: translateY(-3px) scale(1.002);
+  border-color: rgba(54, 199, 255, 0.5) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), 0 0 20px rgba(54, 199, 255, 0.15);
+}
+
+.bento { padding: 16px; min-height: 105px; }
+.bento .label { font-size: 10px; color: var(--text-secondary); letter-spacing: 1.4px; font-weight: 800; text-transform: uppercase; }
+.bento .value { font-size: 22px; font-weight: 800; margin-top: 6px; color: #f8fafc; }
+.bento .sub { font-size: 11px; color: #64748b; margin-top: 4px; }
+
+[data-testid="stMetric"] { padding: 12px 16px; }
+[data-testid="stMetricLabel"] { color: var(--text-secondary) !important; font-size: 10px; letter-spacing: 1.2px; font-weight: 700; }
+[data-testid="stMetricValue"] { color: var(--text-primary) !important; font-size: 22px; font-weight: 800; }
+
+[data-testid="stDataFrame"] { border: 1px solid var(--border-cyan); background: rgba(5, 12, 20, 0.8); }
+
+/* Sidebar styling */
 [data-testid="stSidebar"] {
-  background: linear-gradient(180deg,#08111b 0%,#060c14 100%) !important;
-  border-right: 1px solid #172b3b;
-  min-width: 244px !important;
-  max-width: 244px !important;
+  background: linear-gradient(180deg, #08111b 0%, #04080e 100%) !important;
+  border-right: 1px solid rgba(23, 43, 59, 0.8);
+  min-width: 250px !important;
+  max-width: 250px !important;
 }
 [data-testid="stSidebar"] > div:first-child { padding: 18px 14px 20px; }
+
 .rail-brand {
-  display:flex; align-items:center; gap:11px; padding:8px 5px 20px;
-  border-bottom:1px solid #172b3b; margin-bottom:18px;
+  display: flex; align-items: center; gap: 11px; padding: 8px 5px 20px;
+  border-bottom: 1px solid rgba(23, 43, 59, 0.8); margin-bottom: 18px;
 }
 .rail-brand-mark {
-  display:grid; place-items:center; width:34px; height:34px; border-radius:10px;
-  color:#66e2ff; font-size:20px; font-weight:900;
-  background:linear-gradient(145deg,#10263a,#0a1420); border:1px solid #1d4660;
-  box-shadow:0 0 24px rgba(36,184,228,.12);
+  display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px;
+  color: var(--neon-cyan); font-size: 20px; font-weight: 900;
+  background: linear-gradient(145deg, #10263a, #0a1420); border: 1px solid #1d4660;
+  box-shadow: 0 0 20px rgba(54, 199, 255, 0.25);
+  animation: pulseNeon 3s infinite ease-in-out;
 }
-.rail-brand-name { color:#eff8ff; font-size:14px; font-weight:900; letter-spacing:1.3px; }
-.rail-brand-sub { color:#70879b; font-size:9px; letter-spacing:1.5px; margin-top:3px; }
-.rail-section-label { color:#668097; font-size:9px; letter-spacing:1.7px; font-weight:800; margin:12px 7px 6px; }
-[data-testid="stSidebar"] [data-testid="stRadio"] > label { display:none; }
-[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] { gap:4px; }
+.rail-brand-name { color: var(--text-primary); font-size: 14px; font-weight: 900; letter-spacing: 1.5px; }
+.rail-brand-sub { color: var(--text-secondary); font-size: 9px; letter-spacing: 1.5px; margin-top: 3px; }
+
+.rail-section-label { color: var(--text-secondary); font-size: 9px; letter-spacing: 1.8px; font-weight: 800; margin: 14px 7px 8px; }
+
+[data-testid="stSidebar"] [data-testid="stRadio"] > label { display: none; }
+[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] { gap: 6px; }
 [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label {
-  min-height:40px; padding:8px 10px; border:1px solid transparent;
-  border-radius:9px; background:transparent; transition:all 160ms ease;
+  min-height: 42px; padding: 8px 12px; border: 1px solid transparent;
+  border-radius: 10px; background: transparent; transition: all 200ms ease;
+  cursor: pointer;
 }
 [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label:hover {
-  background:#0b1a28; border-color:#1a374d; transform:translateX(2px);
+  background: rgba(11, 26, 40, 0.8); border-color: rgba(26, 55, 77, 0.8); transform: translateX(3px);
 }
 [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label:has(input:checked) {
-  background:linear-gradient(100deg,rgba(39,183,224,.15),rgba(24,76,105,.12));
-  border-color:#23506a; box-shadow:inset 2px 0 #43d5f5;
+  background: linear-gradient(90deg, rgba(54, 199, 255, 0.18), rgba(15, 35, 52, 0.2));
+  border-color: rgba(54, 199, 255, 0.4); box-shadow: inset 3px 0 0 var(--neon-cyan), 0 0 12px rgba(54, 199, 255, 0.15);
 }
 [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label:has(input:checked) p {
-  color:#e9f8ff !important; font-weight:800;
+  color: #f8fafc !important; font-weight: 800;
 }
+
 .rail-status {
-  margin-top:20px; padding:12px; border-radius:10px;
-  border:1px solid #19354a; background:linear-gradient(145deg,#0a1824,#08121c);
+  margin-top: 22px; padding: 12px; border-radius: 10px;
+  border: 1px solid rgba(25, 53, 74, 0.8); background: linear-gradient(145deg, #0a1824, #08121c);
 }
-.rail-status-title { color:#7892a7; font-size:9px; font-weight:800; letter-spacing:1.5px; }
-.rail-status-mode { color:#49d7a4; font-size:12px; font-weight:800; margin-top:7px; }
+.rail-status-title { color: var(--text-secondary); font-size: 9px; font-weight: 800; letter-spacing: 1.5px; }
+.rail-status-mode { color: var(--neon-green); font-size: 12px; font-weight: 800; margin-top: 6px; display: flex; align-items: center; gap: 6px; }
+
+/* Terminal Topbar & Elements */
 .terminal-topbar {
-  display:flex; justify-content:space-between; align-items:center; gap:16px;
-  padding:9px 0 16px; margin-bottom:10px; border-bottom:1px solid #142737;
+  display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  padding: 10px 0 18px; margin-bottom: 12px; border-bottom: 1px solid rgba(20, 39, 55, 0.8);
 }
-.terminal-eyebrow { color:#57cce7; font-size:9px; font-weight:800; letter-spacing:1.8px; }
-.terminal-page-title { color:#eef7ff; font-size:20px; font-weight:800; margin-top:3px; }
-.terminal-top-meta { display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
+.terminal-eyebrow { color: var(--neon-cyan); font-size: 9px; font-weight: 800; letter-spacing: 2px; }
+.terminal-page-title { color: var(--text-primary); font-size: 22px; font-weight: 900; margin-top: 3px; letter-spacing: 0.5px; }
+.terminal-top-meta { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
 .top-pill {
-  display:inline-flex; align-items:center; border:1px solid #1d394e;
-  background:#091521; border-radius:999px; padding:5px 9px;
-  color:#a4b9c9; font-size:9px; font-weight:800; letter-spacing:.7px;
+  display: inline-flex; align-items: center; border: 1px solid rgba(29, 57, 78, 0.9);
+  background: rgba(9, 21, 33, 0.8); border-radius: 999px; padding: 5px 11px;
+  color: #94a3b8; font-size: 9px; font-weight: 800; letter-spacing: 0.8px;
 }
-.top-pill.paper { color:#5fe0af; border-color:#20533f; background:#0a1a14; }
-.terminal-muted { color:#6f879b; font-size:10px; }
-.section { color:#eef7ff; font-size:17px; letter-spacing:.1px; margin:13px 0 7px; }
-.bento,.signal,[data-testid="stMetric"],[data-testid="stDataFrame"],[data-testid="stVerticalBlockBorderWrapper"] {
-  border-radius:10px;
+.top-pill.paper { color: var(--neon-green); border-color: rgba(32, 83, 63, 0.8); background: rgba(10, 26, 20, 0.8); }
+
+.section { color: var(--text-primary); font-size: 18px; font-weight: 800; letter-spacing: 0.2px; margin: 16px 0 8px; }
+
+/* Visual Pipeline Connector Cards & Flow Lines */
+.pipeline-wrapper {
+  margin: 16px 0 24px;
+  padding: 16px;
+  background: rgba(6, 14, 24, 0.7);
+  border: 1px solid rgba(30, 60, 85, 0.8);
+  border-radius: 14px;
+  backdrop-filter: blur(10px);
 }
-[data-testid="stMetric"] {
-  background:linear-gradient(145deg,#091723,#0a1a27);
-  border-color:#1a3448; padding:12px 14px;
+.pipeline-title {
+  font-size: 11px; font-weight: 800; letter-spacing: 1.8px; color: var(--neon-cyan); margin-bottom: 12px; text-transform: uppercase;
+  display: flex; align-items: center; gap: 8px;
 }
-[data-testid="stMetricLabel"] { color:#7892a7 !important; font-size:10px; letter-spacing:1px; }
-[data-testid="stMetricValue"] { color:#eff8ff !important; font-size:22px; }
-[data-testid="stVerticalBlockBorderWrapper"] {
-  border-color:#193247 !important; background:rgba(7,17,27,.72);
+.pipeline-flow {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: nowrap; overflow-x: auto; padding: 4px 0;
 }
-[data-testid="stDataFrame"] { border:1px solid #193247; background:#07111b; }
-[data-testid="stDataFrame"] th { color:#7892a7 !important; }
-div[data-testid="stAlert"] { border-radius:9px; }
-[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p { color:#6f879b !important; font-size:10px; }
-.watch-row {
-  display:flex; align-items:center; justify-content:space-between; gap:8px;
-  padding:9px 2px; border-bottom:1px solid #142737;
+.pipeline-step {
+  flex: 1; min-width: 140px; padding: 12px 14px;
+  background: linear-gradient(145deg, rgba(12, 28, 44, 0.85), rgba(8, 18, 28, 0.85));
+  border: 1px solid rgba(34, 68, 96, 0.7); border-radius: 10px;
+  position: relative; transition: all 200ms ease;
 }
-.watch-symbol { color:#dceaf4; font-size:11px; font-weight:800; }
-.watch-name { color:#6f879b; font-size:9px; margin-top:2px; }
-.watch-price { color:#eef8ff; font-size:11px; font-weight:800; text-align:right; }
-.watch-feed { color:#54d9aa; font-size:8px; font-weight:800; letter-spacing:.8px; margin-top:2px; text-align:right; }
-.stButton>button {
-  border-radius:8px; background:linear-gradient(180deg,#0d2030,#0a1723);
-  border-color:#24445a; font-size:11px;
+.pipeline-step:hover {
+  border-color: var(--neon-cyan); transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3), 0 0 12px rgba(54, 199, 255, 0.2);
 }
-.stButton>button[kind="primary"] {
-  background:linear-gradient(105deg,#107da4,#13a6bd); border-color:#24b9d2;
+.pipeline-step .step-badge {
+  font-size: 9px; font-weight: 800; color: #0284c7; background: rgba(56, 189, 248, 0.12);
+  padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 6px;
 }
+.pipeline-step .step-name { font-size: 12px; font-weight: 800; color: var(--text-primary); }
+.pipeline-step .step-desc { font-size: 10px; color: var(--text-secondary); margin-top: 3px; }
+
+.pipeline-arrow {
+  display: flex; align-items: center; justify-content: center; color: var(--neon-cyan);
+  font-size: 16px; opacity: 0.8; padding: 0 4px; animation: pulseGlow 2s infinite ease-in-out;
+}
+
+/* Status indicators and Pulse animations */
+.pulse-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--neon-green);
+  display: inline-block; box-shadow: 0 0 8px var(--neon-green);
+  animation: pulseDot 1.8s infinite ease-in-out;
+}
+
+/* Keyframe Animations */
+@keyframes omniFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes omniCardSlide {
+  from { opacity: 0; transform: translateY(10px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes pulseDot {
+  0% { transform: scale(0.9); opacity: 0.7; box-shadow: 0 0 4px var(--neon-green); }
+  50% { transform: scale(1.2); opacity: 1; box-shadow: 0 0 12px var(--neon-green); }
+  100% { transform: scale(0.9); opacity: 0.7; box-shadow: 0 0 4px var(--neon-green); }
+}
+@keyframes pulseNeon {
+  0%, 100% { box-shadow: 0 0 15px rgba(54, 199, 255, 0.2); }
+  50% { box-shadow: 0 0 28px rgba(54, 199, 255, 0.45); }
+}
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.5; transform: translateX(0); }
+  50% { opacity: 1; transform: translateX(2px); }
+}
+
 @media (max-width: 900px) {
   [data-testid="stSidebar"] { min-width: 210px !important; max-width: 210px !important; }
-  .block-container { padding-left: 16px; padding-right: 16px; }
-  .terminal-topbar { align-items:flex-start; flex-direction:column; }
-  .terminal-top-meta { justify-content:flex-start; }
-}
-@media (prefers-reduced-motion: reduce) {
-  *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; }
+  .block-container { padding-left: 14px; padding-right: 14px; }
+  .terminal-topbar { align-items: flex-start; flex-direction: column; }
+  .pipeline-flow { flex-direction: column; align-items: stretch; }
+  .pipeline-arrow { transform: rotate(90deg); margin: 4px 0; }
 }
 </style>
 """,unsafe_allow_html=True)
@@ -233,13 +309,39 @@ with st.sidebar:
     st.caption(f"Local model · {LOCAL_LLM_MODEL}")
     st.caption("Live orders and F&O are disabled.")
 
+def render_pipeline_connector(active_step=1):
+    steps = [
+        ("1. Market Data", "Groww / YFinance Feed", "Feed"),
+        ("2. Technical Matrix", "RSI, MACD, ADX, VWAP", "Indicators"),
+        ("3. Pattern Engine", "Breakout & Trend Analysis", "Patterns"),
+        ("4. AI Intelligence", "Local Synthesis & News", "AI Core"),
+        ("5. Risk & Execution", "Sizing, Stop Loss, Ledger", "Paper Mode")
+    ]
+    html = '<div class="pipeline-wrapper"><div class="pipeline-title"><span>◈ OMNITRIX TRADING PIPELINE CONNECTORS</span> <span class="pulse-dot"></span></div><div class="pipeline-flow">'
+    for idx, (title, desc, badge) in enumerate(steps, 1):
+        is_active = (idx == active_step)
+        active_style = 'border-color: var(--neon-cyan) !important; box-shadow: 0 0 16px rgba(54,199,255,0.25) !important; background: linear-gradient(145deg, rgba(16,40,64,0.95), rgba(10,25,40,0.95)) !important;' if is_active else ''
+        badge_style = 'color: #38bdf8 !important; background: rgba(56, 189, 248, 0.2) !important;' if is_active else ''
+        html += f'''
+        <div class="pipeline-step" style="{active_style}">
+            <div class="step-badge" style="{badge_style}">{badge}</div>
+            <div class="step-name">{title}</div>
+            <div class="step-desc">{desc}</div>
+        </div>
+        '''
+        if idx < len(steps):
+            html += '<div class="pipeline-arrow">➔</div>'
+    html += '</div></div>'
+    st.markdown(html, unsafe_allow_html=True)
+
 page_title = PAGE_TITLES[st.session_state.page]
 st.markdown(
-    f'<div class="terminal-topbar"><div><div class="terminal-eyebrow">OMNITRIX / INDIAN EQUITIES</div><div class="terminal-page-title">{page_title}</div></div><div class="terminal-top-meta"><span class="top-pill">NSE CASH MARKET</span><span class="top-pill paper">PAPER MODE</span><span class="terminal-muted">{datetime.now().strftime("%d %b · %H:%M")}</span></div></div>',
+    f'<div class="terminal-topbar"><div><div class="terminal-eyebrow">OMNITRIX / INDIAN EQUITIES</div><div class="terminal-page-title">{page_title}</div></div><div class="terminal-top-meta"><span class="top-pill">NSE CASH MARKET</span><span class="top-pill paper"><span class="pulse-dot" style="margin-right:6px;"></span>PAPER MODE</span><span class="terminal-muted">{datetime.now().strftime("%d %b · %H:%M")}</span></div></div>',
     unsafe_allow_html=True,
 )
 
 if st.session_state.page=="MARKET":
+    render_pipeline_connector(1)
     nifty=get_nifty_price(); account=get_account()
     metric_cols=st.columns(4,gap="medium")
     cards=[
@@ -298,7 +400,7 @@ if st.session_state.page=="MARKET":
     st.caption("Market data may be delayed. This screen is for research and paper mode; it does not send broker orders.")
 
 elif st.session_state.page=="AI":
-    
+    render_pipeline_connector(4)
     st.caption(f"Local model · {LOCAL_LLM_MODEL} · Questions run only when submitted")
     left,right=st.columns([1.7,1],gap="large")
     with left:
@@ -339,7 +441,7 @@ elif st.session_state.page=="AI":
                 st.markdown(st.session_state.ai_rule_draft)
 
 elif st.session_state.page=="RESEARCHER":
-    
+    render_pipeline_connector(2)
     st.caption("Price action, fundamentals, technical state, historical patterns and source-linked news in one research view.")
     selector_col,action_col=st.columns([3,1],vertical_alignment="bottom")
     with selector_col:
@@ -450,7 +552,7 @@ elif st.session_state.page=="RESEARCHER":
                 st.markdown(st.session_state.report)
 
 elif st.session_state.page=="SCANNER":
-    
+    render_pipeline_connector(3)
     st.caption("Filter first, review transparent indicator scores and send only a small shortlist to local AI.")
     filter_cols=st.columns([1.15,1,1,1],gap="medium")
     universe=filter_cols[0].selectbox("Universe",["NIFTY focus list","Full coverage"],key="scanner_universe")
@@ -529,7 +631,7 @@ elif st.session_state.page=="SCANNER":
         st.info("Choose a universe and run a scan to see candidates ranked by price, trend, momentum, volume and chart pattern.")
 
 elif st.session_state.page=="AI DEPLOYED":
-    
+    render_pipeline_connector(5)
     st.markdown('<div class="warn">PAPER RESEARCH ONLY. The pipeline reads market evidence and runs local AI analysis. It does not send broker orders or provide external notifications.</div>',unsafe_allow_html=True)
     status_cols=st.columns(4)
     for col,label,value,detail in zip(status_cols,["NEWS","PRICE","CHART","RISK"],["Headlines","Quote snapshot","Trend + pattern","Hard gate"],["stock-linked feed","provider may be delayed","technical context","live orders disabled"]):
