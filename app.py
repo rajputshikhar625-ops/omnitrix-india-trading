@@ -12,7 +12,7 @@ from charts import candlestick_chart, oscillator_chart, volume_chart
 from paper_trading import get_account, monitor_positions
 from learning_engine import learning_report, mistakes_by_reason
 
-st.set_page_config(page_title="OMNITRIX",page_icon="◈",layout="wide",initial_sidebar_state="collapsed")
+st.set_page_config(page_title="OMNITRIX",page_icon="◈",layout="wide",initial_sidebar_state="expanded")
 
 st.markdown("""
 <style>
@@ -79,6 +79,107 @@ div[data-testid="stTabs"] button{color:#8fa5b9!important}
   }
 }
 
+
+/* Terminal shell tuned to the five Figma workspaces */
+.stApp, [data-testid="stAppViewContainer"] { background: #05090e; }
+.block-container { max-width: 1740px; padding: 18px 26px 38px; }
+[data-testid="stSidebar"] {
+  background: linear-gradient(180deg,#08111b 0%,#060c14 100%) !important;
+  border-right: 1px solid #172b3b;
+  min-width: 244px !important;
+  max-width: 244px !important;
+}
+[data-testid="stSidebar"] > div:first-child { padding: 18px 14px 20px; }
+.rail-brand {
+  display:flex; align-items:center; gap:11px; padding:8px 5px 20px;
+  border-bottom:1px solid #172b3b; margin-bottom:18px;
+}
+.rail-brand-mark {
+  display:grid; place-items:center; width:34px; height:34px; border-radius:10px;
+  color:#66e2ff; font-size:20px; font-weight:900;
+  background:linear-gradient(145deg,#10263a,#0a1420); border:1px solid #1d4660;
+  box-shadow:0 0 24px rgba(36,184,228,.12);
+}
+.rail-brand-name { color:#eff8ff; font-size:14px; font-weight:900; letter-spacing:1.3px; }
+.rail-brand-sub { color:#70879b; font-size:9px; letter-spacing:1.5px; margin-top:3px; }
+.rail-section-label { color:#668097; font-size:9px; letter-spacing:1.7px; font-weight:800; margin:12px 7px 6px; }
+[data-testid="stSidebar"] [data-testid="stRadio"] > label { display:none; }
+[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] { gap:4px; }
+[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label {
+  min-height:40px; padding:8px 10px; border:1px solid transparent;
+  border-radius:9px; background:transparent; transition:all 160ms ease;
+}
+[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label:hover {
+  background:#0b1a28; border-color:#1a374d; transform:translateX(2px);
+}
+[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label:has(input:checked) {
+  background:linear-gradient(100deg,rgba(39,183,224,.15),rgba(24,76,105,.12));
+  border-color:#23506a; box-shadow:inset 2px 0 #43d5f5;
+}
+[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label:has(input:checked) p {
+  color:#e9f8ff !important; font-weight:800;
+}
+.rail-status {
+  margin-top:20px; padding:12px; border-radius:10px;
+  border:1px solid #19354a; background:linear-gradient(145deg,#0a1824,#08121c);
+}
+.rail-status-title { color:#7892a7; font-size:9px; font-weight:800; letter-spacing:1.5px; }
+.rail-status-mode { color:#49d7a4; font-size:12px; font-weight:800; margin-top:7px; }
+.terminal-topbar {
+  display:flex; justify-content:space-between; align-items:center; gap:16px;
+  padding:9px 0 16px; margin-bottom:10px; border-bottom:1px solid #142737;
+}
+.terminal-eyebrow { color:#57cce7; font-size:9px; font-weight:800; letter-spacing:1.8px; }
+.terminal-page-title { color:#eef7ff; font-size:20px; font-weight:800; margin-top:3px; }
+.terminal-top-meta { display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
+.top-pill {
+  display:inline-flex; align-items:center; border:1px solid #1d394e;
+  background:#091521; border-radius:999px; padding:5px 9px;
+  color:#a4b9c9; font-size:9px; font-weight:800; letter-spacing:.7px;
+}
+.top-pill.paper { color:#5fe0af; border-color:#20533f; background:#0a1a14; }
+.terminal-muted { color:#6f879b; font-size:10px; }
+.section { color:#eef7ff; font-size:17px; letter-spacing:.1px; margin:13px 0 7px; }
+.bento,.signal,[data-testid="stMetric"],[data-testid="stDataFrame"],[data-testid="stVerticalBlockBorderWrapper"] {
+  border-radius:10px;
+}
+[data-testid="stMetric"] {
+  background:linear-gradient(145deg,#091723,#0a1a27);
+  border-color:#1a3448; padding:12px 14px;
+}
+[data-testid="stMetricLabel"] { color:#7892a7 !important; font-size:10px; letter-spacing:1px; }
+[data-testid="stMetricValue"] { color:#eff8ff !important; font-size:22px; }
+[data-testid="stVerticalBlockBorderWrapper"] {
+  border-color:#193247 !important; background:rgba(7,17,27,.72);
+}
+[data-testid="stDataFrame"] { border:1px solid #193247; background:#07111b; }
+[data-testid="stDataFrame"] th { color:#7892a7 !important; }
+div[data-testid="stAlert"] { border-radius:9px; }
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p { color:#6f879b !important; font-size:10px; }
+.watch-row {
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:9px 2px; border-bottom:1px solid #142737;
+}
+.watch-symbol { color:#dceaf4; font-size:11px; font-weight:800; }
+.watch-name { color:#6f879b; font-size:9px; margin-top:2px; }
+.watch-price { color:#eef8ff; font-size:11px; font-weight:800; text-align:right; }
+.watch-feed { color:#54d9aa; font-size:8px; font-weight:800; letter-spacing:.8px; margin-top:2px; text-align:right; }
+.stButton>button {
+  border-radius:8px; background:linear-gradient(180deg,#0d2030,#0a1723);
+  border-color:#24445a; font-size:11px;
+}
+.stButton>button[kind="primary"] {
+  background:linear-gradient(105deg,#107da4,#13a6bd); border-color:#24b9d2;
+}
+@media (max-width: 900px) {
+  [data-testid="stSidebar"] { min-width: 210px !important; max-width: 210px !important; }
+  .block-container { padding-left: 16px; padding-right: 16px; }
+  .terminal-topbar { align-items:flex-start; flex-direction:column; }
+  .terminal-top-meta { justify-content:flex-start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; }
+}
 </style>
 """,unsafe_allow_html=True)
 
@@ -103,30 +204,101 @@ def mini_trend_chart(frame,symbol):
     fig.update_layout(height=135,margin={"l":0,"r":0,"t":4,"b":0},paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",showlegend=False,xaxis={"visible":False,"fixedrange":True},yaxis={"visible":False,"fixedrange":True})
     return fig
 
-st.markdown(f'<div class="hero"><div class="kicker">OMNITRIX INTELLIGENCE TERMINAL</div><div class="title">OMNITRIX</div><div class="subtitle">Indian cash-equity research • pattern intelligence • local AI • paper execution</div><div style="margin-top:9px"><span class="status">LLaMA {LOCAL_LLM_MODEL} ONLINE</span> <span class="subtitle"> &nbsp; F&O OFF &nbsp;•&nbsp; LIVE ORDERS OFF &nbsp;•&nbsp; PAPER MODE</span></div></div>',unsafe_allow_html=True)
+PAGE_TITLES = {
+    "MARKET": "Command Center",
+    "AI": "AI Workspace",
+    "RESEARCHER": "Security Researcher",
+    "SCANNER": "Market Scanner",
+    "AI DEPLOYED": "AI Deployed",
+}
+PAGE_ICONS = {
+    "MARKET": "◈  Market",
+    "AI": "✦  AI Workspace",
+    "RESEARCHER": "⌕  Researcher",
+    "SCANNER": "▦  Scanner",
+    "AI DEPLOYED": "◎  AI Deployed",
+}
 
-nav=st.columns(5)
-for i,name in enumerate(["MARKET","AI","RESEARCHER","SCANNER","AI DEPLOYED"]):
-    active=" ▪" if st.session_state.page==name else ""
-    if nav[i].button(name+active,width="stretch",key="nav_"+name):
-        st.session_state.page=name; st.rerun()
+with st.sidebar:
+    st.markdown('<div class="rail-brand"><div class="rail-brand-mark">◈</div><div><div class="rail-brand-name">OMNITRIX</div><div class="rail-brand-sub">TRADING INTELLIGENCE</div></div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="rail-section-label">WORKSPACES</div>', unsafe_allow_html=True)
+    st.radio(
+        "Workspace",
+        options=list(PAGE_TITLES),
+        format_func=lambda value: PAGE_ICONS[value],
+        key="page",
+        label_visibility="collapsed",
+    )
+    st.markdown('<div class="rail-status"><div class="rail-status-title">EXECUTION MODE</div><div class="rail-status-mode">● PAPER ONLY</div></div>', unsafe_allow_html=True)
+    st.caption(f"Local model · {LOCAL_LLM_MODEL}")
+    st.caption("Live orders and F&O are disabled.")
+
+page_title = PAGE_TITLES[st.session_state.page]
+st.markdown(
+    f'<div class="terminal-topbar"><div><div class="terminal-eyebrow">OMNITRIX / INDIAN EQUITIES</div><div class="terminal-page-title">{page_title}</div></div><div class="terminal-top-meta"><span class="top-pill">NSE CASH MARKET</span><span class="top-pill paper">PAPER MODE</span><span class="terminal-muted">{datetime.now().strftime("%d %b · %H:%M")}</span></div></div>',
+    unsafe_allow_html=True,
+)
 
 if st.session_state.page=="MARKET":
-    nifty=get_nifty_price(); a=get_account()
-    st.markdown('<div class="section">Command Center</div>',unsafe_allow_html=True)
-    c=st.columns(5)
-    cards=[("NIFTY 50",f"₹{nifty:,.2f}" if nifty else "DATA","market pulse"),("PAPER CASH",f"₹{a['cash']:,.0f}","test capital"),("REALIZED P&L",f"₹{a['realized_pnl']:,.0f}","paper ledger"),("UNIVERSE",f"{len(STOCKS)}","Indian equities"),("AI STATUS","ONLINE","local LLaMA")]
-    for col,(l,v,s) in zip(c,cards):
-        col.markdown(f'<div class="bento"><div class="label">{l}</div><div class="value">{v}</div><div class="sub">{s}</div></div>',unsafe_allow_html=True)
-    st.markdown('<div class="section">Market Pulse</div>',unsafe_allow_html=True)
-    if st.button("REFRESH MARKET SNAPSHOT",width="stretch"):
-        st.cache_data.clear(); st.rerun()
+    nifty=get_nifty_price(); account=get_account()
+    metric_cols=st.columns(4,gap="medium")
+    cards=[
+        ("NIFTY 50",f"₹{nifty:,.2f}" if nifty else "—","Index · delayed snapshot"),
+        ("PAPER CASH",f"₹{account['cash']:,.0f}","Simulated account"),
+        ("REALIZED P&L",f"₹{account['realized_pnl']:,.0f}","Paper ledger"),
+        ("COVERAGE",f"{len(STOCKS)}","Tracked NSE equities"),
+    ]
+    for col,(label,value,detail) in zip(metric_cols,cards):
+        col.markdown(f'<div class="bento"><div class="label">{label}</div><div class="value">{value}</div><div class="sub">{detail}</div></div>',unsafe_allow_html=True)
+
+    section_col,refresh_col=st.columns([2.5,1],vertical_alignment="bottom")
+    with section_col:
+        st.markdown('<div class="section">Market universe</div>',unsafe_allow_html=True)
+        st.caption("A compact view of available quotes across the tracked universe.")
+    with refresh_col:
+        if st.button("REFRESH SNAPSHOT",width="stretch",key="market_refresh"):
+            st.cache_data.clear(); st.rerun()
+
     snap=market_snapshot(list(STOCKS)[:50])
-    if not snap.empty: st.dataframe(snap,width="stretch",hide_index=True)
-    st.caption("Price source: Groww LTP when configured; otherwise YFinance fallback. Exchange-grade live feed will be added only after deliberate activation.")
+    market_col,watch_col=st.columns([1.8,1],gap="large")
+    with market_col:
+        with st.container(border=True):
+            st.markdown("**Universe quotes**")
+            if not snap.empty:
+                display=snap.copy()
+                display.insert(1,"company",display["symbol"].map(STOCKS))
+                st.dataframe(display,width="stretch",hide_index=True,height=560)
+            else:
+                st.info("No quotes are available right now. Check the configured market-data providers and refresh.")
+    with watch_col:
+        with st.container(border=True):
+            st.markdown("**Watchlist focus**")
+            st.caption("Latest available snapshots · source shown per symbol")
+            if not snap.empty:
+                watch=snap[snap["symbol"].isin(st.session_state.market_watchlist)]
+                if watch.empty:
+                    st.info("No watchlist quotes returned in this snapshot.")
+                else:
+                    for _,row in watch.iterrows():
+                        symbol=str(row["symbol"])
+                        feed=str(row.get("feed",""))
+                        price=float(row["price"])
+                        st.markdown(
+                            f'<div class="watch-row"><div><div class="watch-symbol">{symbol.replace(".NS","")}</div><div class="watch-name">{STOCKS.get(symbol,symbol)}</div></div><div><div class="watch-price">₹{price:,.2f}</div><div class="watch-feed">{feed}</div></div></div>',
+                            unsafe_allow_html=True,
+                        )
+                feeds=snap["feed"].value_counts().to_dict() if "feed" in snap else {}
+                groww=int(feeds.get("GROWW",0))
+                yahoo=int(feeds.get("YFINANCE",0))
+                st.markdown('<div class="section">Feed coverage</div>',unsafe_allow_html=True)
+                st.metric("Quotes returned",f"{len(snap)} / 50")
+                st.caption(f"Groww {groww} · Yahoo Finance fallback {yahoo}")
+            else:
+                st.info("Feed coverage will appear after quotes are available.")
+    st.caption("Market data may be delayed. This screen is for research and paper mode; it does not send broker orders.")
 
 elif st.session_state.page=="AI":
-    st.markdown('<div class="section">AI Workspace</div>',unsafe_allow_html=True)
+    
     st.caption(f"Local model · {LOCAL_LLM_MODEL} · Questions run only when submitted")
     left,right=st.columns([1.7,1],gap="large")
     with left:
@@ -167,7 +339,7 @@ elif st.session_state.page=="AI":
                 st.markdown(st.session_state.ai_rule_draft)
 
 elif st.session_state.page=="RESEARCHER":
-    st.markdown('<div class="section">Security Researcher</div>',unsafe_allow_html=True)
+    
     st.caption("Price action, fundamentals, technical state, historical patterns and source-linked news in one research view.")
     selector_col,action_col=st.columns([3,1],vertical_alignment="bottom")
     with selector_col:
@@ -278,7 +450,7 @@ elif st.session_state.page=="RESEARCHER":
                 st.markdown(st.session_state.report)
 
 elif st.session_state.page=="SCANNER":
-    st.markdown('<div class="section">Market Scanner</div>',unsafe_allow_html=True)
+    
     st.caption("Filter first, review transparent indicator scores and send only a small shortlist to local AI.")
     filter_cols=st.columns([1.15,1,1,1],gap="medium")
     universe=filter_cols[0].selectbox("Universe",["NIFTY focus list","Full coverage"],key="scanner_universe")
@@ -357,7 +529,7 @@ elif st.session_state.page=="SCANNER":
         st.info("Choose a universe and run a scan to see candidates ranked by price, trend, momentum, volume and chart pattern.")
 
 elif st.session_state.page=="AI DEPLOYED":
-    st.markdown('<div class="section">AI Deployed — Multi-stock Decision Desk</div>',unsafe_allow_html=True)
+    
     st.markdown('<div class="warn">PAPER RESEARCH ONLY. The pipeline reads market evidence and runs local AI analysis. It does not send broker orders or provide external notifications.</div>',unsafe_allow_html=True)
     status_cols=st.columns(4)
     for col,label,value,detail in zip(status_cols,["NEWS","PRICE","CHART","RISK"],["Headlines","Quote snapshot","Trend + pattern","Hard gate"],["stock-linked feed","provider may be delayed","technical context","live orders disabled"]):
