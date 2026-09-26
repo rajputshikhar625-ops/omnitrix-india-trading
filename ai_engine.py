@@ -96,34 +96,37 @@ def ai_call(
     temperature=0.1
 ):
 
-    client = get_client(
-        provider=provider,
-        base_url=base_url,
-        api_key=api_key
-    )
+    try:
+        client = get_client(
+            provider=provider,
+            base_url=base_url,
+            api_key=api_key
+        )
 
-    model = get_model(
-        provider
-    )
+        model = get_model(
+            provider
+        )
 
-    response = client.chat.completions.create(
-        model=model,
-        temperature=temperature,
-        messages=[
-            {
-                "role": "system",
-                "content": SYSTEM_PROMPT
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
-    )
+        response = client.chat.completions.create(
+            model=model,
+            temperature=temperature,
+            messages=[
+                {
+                    "role": "system",
+                    "content": SYSTEM_PROMPT
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        )
 
-    return response.choices[
-        0
-    ].message.content
+        return response.choices[
+            0
+        ].message.content
+    except Exception as e:
+        return f"AI Engine Connection Error: {str(e)}\nEnsure local LLM (e.g. Ollama) or Groq API key is running and configured."
 
 
 def build_research_prompt(package):

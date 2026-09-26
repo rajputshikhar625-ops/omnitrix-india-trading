@@ -9,7 +9,9 @@ def read_json(p,default=None):
  try:return json.loads(p.read_text(encoding="utf-8"))
  except Exception:return default
 def log(msg):
- LOG_DIR.mkdir(parents=True,exist_ok=True);LOG_FILE.open("a",encoding="utf-8").write(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {msg}\n")
+ LOG_DIR.mkdir(parents=True,exist_ok=True)
+ with LOG_FILE.open("a",encoding="utf-8") as f:
+     f.write(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {msg}\n")
 def save_orders(rows):TRADE_DIR.mkdir(parents=True,exist_ok=True);pd.DataFrame(rows or []).to_csv(ORDERS_FILE,index=False)
 def load_orders():
  try:return pd.read_csv(ORDERS_FILE) if ORDERS_FILE.exists() else pd.DataFrame()
