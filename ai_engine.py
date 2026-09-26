@@ -198,6 +198,31 @@ What should be monitored next:
     )
 
 
+
+def autonomous_multi_research(packages, provider="LOCAL"):
+    """Compare up to six collected stock packages using the configured local model."""
+    safe=[]
+    for package in packages[:6]:
+        if not package: continue
+        history=package.get("pattern_history",[])
+        if hasattr(history,"to_dict"):
+            history=history.tail(5).to_dict("records")
+        match=package.get("news_match",{}) or {}
+        safe.append({
+            "symbol":package.get("symbol"),
+            "technical":package.get("technical",{}),
+            "fundamentals":package.get("fundamentals",{}),
+            "levels":package.get("levels",{}),
+            "news":package.get("news",[])[:5],
+            "news_match":{"bias":match.get("bias"),"score":match.get("score"),"headline":match.get("headline")},
+            "patterns":package.get("patterns",[])[:5],
+            "pattern_history":history,
+        })
+    if not safe: raise ValueError("No stock research evidence was available.")
+    data=json.dumps(safe,indent=2,default=str)
+    prompt=f"""Compare these Indian cash-equity research packages using only the supplied evidence.\n\nDATA:\n{data}\n\nFor each symbol, summarize observed price/technical structure, relevant fundamentals, recent headlines, historical pattern evidence, risks, and missing data. Include a concise comparison table with one row per stock. Separate measured facts from interpretation and explain conflicting signals.\n\nDo not issue buy/sell instructions, predict guaranteed outcomes, provide position sizes, or initiate broker actions. Finish with the main uncertainties to monitor. This is research, not a trade order."""
+    return ai_call(prompt,provider=provider,temperature=0.1)
+
 def test_ai(
     provider=None,
     base_url=None,
