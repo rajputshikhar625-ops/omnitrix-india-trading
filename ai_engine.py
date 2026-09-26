@@ -182,7 +182,9 @@ State the largest missing or unreliable information.
 Research completeness: X/100
 Data quality: HIGH/MEDIUM/LOW
 What should be monitored next:
-"""\ndef autonomous_research(
+"""
+
+def autonomous_research(
     package,
     provider=None
 ):
